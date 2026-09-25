@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { Room, ServerError, type AuthContext, type Client } from "colyseus";
 import {
   JoinRoomOptionsSchema,
+  ClaimObjectPayloadSchema,
+  ReleaseObjectPayloadSchema,
   SpawnCardPayloadSchema,
   TABLE_COMMANDS,
   type JoinRoomOptions,
@@ -10,10 +12,19 @@ import {
 import { PlayerState, RoomState } from "./state/RoomState.js";
 import { spawnCard } from "../commands/card/spawn-card.js";
 import { DomainCommandError } from "../commands/errors.js";
+import {
+  claimObject,
+  releaseExpiredLocks,
+  releaseObject,
+  releasePlayerLocks,
+} from "../commands/player/object-locks.js";
 
 export interface TableRoomOptions {
   cardDefinitionIds?: string[];
+  lockTimeoutMs?: number;
 }
+
+export const DEFAULT_OBJECT_LOCK_TIMEOUT_MS = 5_000;
 
 function parseJoinOptions(options: unknown): JoinRoomOptions {
   const parsed = JoinRoomOptionsSchema.safeParse(options);
@@ -26,10 +37,12 @@ function parseJoinOptions(options: unknown): JoinRoomOptions {
 export class TableRoom extends Room<{ state: RoomState }> {
   private readonly playerIdBySessionId = new Map<string, PlayerId>();
   private cardDefinitionIds: ReadonlySet<string> = new Set();
+  private lockTimeoutMs = DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
 
   onCreate(options: TableRoomOptions = {}) {
     this.setState(new RoomState());
     this.cardDefinitionIds = new Set(options.cardDefinitionIds ?? []);
+    this.lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
     this.onMessage(TABLE_COMMANDS.SPAWN_CARD, (_client, rawPayload) => {
       const parsed = SpawnCardPayloadSchema.safeParse(rawPayload);
       if (!parsed.success) {
@@ -46,6 +59,44 @@ export class TableRoom extends Room<{ state: RoomState }> {
         throw error;
       }
     });
+    this.onMessage(TABLE_COMMANDS.CLAIM_OBJECT, (client, rawPayload) => {
+      const parsed = ClaimObjectPayloadSchema.safeParse(rawPayload);
+      if (!parsed.success) throw new ServerError(400, "Invalid CLAIM_OBJECT payload.");
+      const playerId = this.playerIdBySessionId.get(client.sessionId);
+      if (!playerId) throw new ServerError(403, "Player is not joined.");
+
+      try {
+        const lock = claimObject(
+          this.state,
+          playerId,
+          parsed.data.object,
+          Date.now(),
+          this.lockTimeoutMs,
+        );
+        return { expiresAt: lock.expiresAt };
+      } catch (error) {
+        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
+        throw error;
+      }
+    });
+    this.onMessage(TABLE_COMMANDS.RELEASE_OBJECT, (client, rawPayload) => {
+      const parsed = ReleaseObjectPayloadSchema.safeParse(rawPayload);
+      if (!parsed.success) throw new ServerError(400, "Invalid RELEASE_OBJECT payload.");
+      const playerId = this.playerIdBySessionId.get(client.sessionId);
+      if (!playerId) throw new ServerError(403, "Player is not joined.");
+
+      try {
+        releaseObject(this.state, playerId, parsed.data.object);
+        return { released: true as const };
+      } catch (error) {
+        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
+        throw error;
+      }
+    });
+    this.clock.setInterval(
+      () => releaseExpiredLocks(this.state, Date.now()),
+      Math.min(this.lockTimeoutMs, 250),
+    );
     console.log(`TableRoom created: ${this.roomId}`);
   }
 
@@ -73,6 +124,7 @@ export class TableRoom extends Room<{ state: RoomState }> {
 
     const player = this.state.players.get(playerId);
     if (player) player.connected = false;
+    releasePlayerLocks(this.state, playerId);
     this.state.players.delete(playerId);
     this.playerIdBySessionId.delete(client.sessionId);
     console.log(`${playerId} left ${this.roomId}`);

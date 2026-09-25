@@ -2,6 +2,8 @@ import { z } from "zod";
 
 export const TABLE_COMMANDS = {
   SPAWN_CARD: "SPAWN_CARD",
+  CLAIM_OBJECT: "CLAIM_OBJECT",
+  RELEASE_OBJECT: "RELEASE_OBJECT",
 } as const;
 
 export const PositionSchema = z.object({
@@ -17,6 +19,31 @@ export type SpawnCardPayload = z.infer<typeof SpawnCardPayloadSchema>;
 
 export interface SpawnCardResult {
   cardId: string;
+}
+
+export const TableObjectRefSchema = z.object({
+  kind: z.literal("card"),
+  id: z.string().min(1),
+});
+
+export type TableObjectRef = z.infer<typeof TableObjectRefSchema>;
+
+export const ClaimObjectPayloadSchema = z.object({ object: TableObjectRefSchema });
+export type ClaimObjectPayload = z.infer<typeof ClaimObjectPayloadSchema>;
+
+export const ReleaseObjectPayloadSchema = z.object({ object: TableObjectRefSchema });
+export type ReleaseObjectPayload = z.infer<typeof ReleaseObjectPayloadSchema>;
+
+export interface ClaimObjectResult {
+  expiresAt: number;
+}
+
+export interface ReleaseObjectResult {
+  released: true;
+}
+
+export function objectLockKey(object: TableObjectRef): string {
+  return `${object.kind}:${object.id}`;
 }
 
 /** Domain bound applied by the authoritative server after structural validation. */

@@ -24,3 +24,10 @@ export interface CardInstance {
   stackId?: string;
   zIndex: number;
 }
+
+export interface ObjectLock {
+  objectKind: "card";
+  objectId: string;
+  playerId: string;
+  expiresAt: number;
+}

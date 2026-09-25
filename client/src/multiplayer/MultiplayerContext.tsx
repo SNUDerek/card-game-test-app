@@ -8,8 +8,17 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { CardInstance, SpawnCardPayload } from "@card-table/shared";
-import { spawnCard as sendSpawnCard } from "./commands";
+import type {
+  CardInstance,
+  ClaimObjectResult,
+  SpawnCardPayload,
+  TableObjectRef,
+} from "@card-table/shared";
+import {
+  claimObject as sendClaimObject,
+  releaseObject as sendReleaseObject,
+  spawnCard as sendSpawnCard,
+} from "./commands";
 
 interface ClientRoomState {
   cards: Map<string, CardInstance>;
@@ -19,6 +28,8 @@ interface MultiplayerValue {
   cards: CardInstance[];
   connectionError: string | null;
   spawnCard(payload: SpawnCardPayload): Promise<void>;
+  claimObject(object: TableObjectRef): Promise<ClaimObjectResult>;
+  releaseObject(object: TableObjectRef): Promise<void>;
 }
 
 const MultiplayerContext = createContext<MultiplayerValue | null>(null);
@@ -86,9 +97,25 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     [room],
   );
 
+  const claimObject = useCallback(
+    async (object: TableObjectRef) => {
+      if (!room) throw new Error("The tabletop is not connected yet.");
+      return sendClaimObject(room, { object });
+    },
+    [room],
+  );
+
+  const releaseObject = useCallback(
+    async (object: TableObjectRef) => {
+      if (!room) throw new Error("The tabletop is not connected yet.");
+      await sendReleaseObject(room, { object });
+    },
+    [room],
+  );
+
   const value = useMemo(
-    () => ({ cards, connectionError, spawnCard }),
-    [cards, connectionError, spawnCard],
+    () => ({ cards, connectionError, spawnCard, claimObject, releaseObject }),
+    [cards, connectionError, spawnCard, claimObject, releaseObject],
   );
 
   return <MultiplayerContext.Provider value={value}>{children}</MultiplayerContext.Provider>;
