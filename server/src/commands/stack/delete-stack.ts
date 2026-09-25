@@ -1,7 +1,8 @@
 import { objectLockKey, type PlayerId } from "@card-table/shared";
 import type { RoomState } from "../../rooms/state/RoomState.js";
 import { DomainCommandError } from "../errors.js";
-import { getStack, rejectForeignLock } from "./stack-helpers.js";
+import { rejectForeignLock } from "../player/object-locks.js";
+import { getStack } from "./stack-helpers.js";
 
 export function deleteStack(
   state: RoomState,

@@ -1,26 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { objectLockKey, type PlayerId } from "@card-table/shared";
+import { objectLockKey } from "@card-table/shared";
 import { CardStackState, type RoomState } from "../../rooms/state/RoomState.js";
 import { DomainCommandError } from "../errors.js";
 import { getStandaloneCard } from "../card/card-access.js";
-
-/**
- * Rejects the operation when another player holds a live lock on the object.
- * Expired locks are swept so they never block an otherwise valid command.
- */
-export function rejectForeignLock(
-  state: RoomState,
-  playerId: PlayerId,
-  object: { kind: "card" | "stack"; id: string },
-  now: number,
-  message: string,
-): void {
-  const key = objectLockKey(object);
-  const lock = state.locks.get(key);
-  if (!lock) return;
-  if (lock.expiresAt <= now) state.locks.delete(key);
-  else if (lock.playerId !== playerId) throw new DomainCommandError(message);
-}
 
 export function getStack(state: RoomState, stackId: string): CardStackState {
   const stack = state.stacks.get(stackId);

@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { CardInstanceState, RoomState } from "../../rooms/state/RoomState.js";
+import { CardInstanceState, ObjectLockState, RoomState } from "../../rooms/state/RoomState.js";
 import { flipCard } from "./flip-card.js";
-import { tapCard } from "./tap-card.js";
-import { untapCard } from "./untap-card.js";
+import { setCardOrientation } from "./tap-card.js";
 
 function stateWithCard(stackId?: string) {
   const state = new RoomState();
@@ -22,32 +21,59 @@ function stateWithCard(stackId?: string) {
   return state;
 }
 
+const flip = (state: RoomState, cardId: string) => flipCard(state, "alice", cardId, 10);
+const tap = (state: RoomState, cardId: string) =>
+  setCardOrientation(state, "alice", cardId, 10, "tapped");
+const untap = (state: RoomState, cardId: string) =>
+  setCardOrientation(state, "alice", cardId, 10, "upright");
+
 describe("card face and orientation commands", () => {
   it("flips a card in both directions", () => {
     const state = stateWithCard();
-    expect(flipCard(state, "card-1")).toBe("back");
-    expect(flipCard(state, "card-1")).toBe("front");
+    expect(flip(state, "card-1")).toBe("back");
+    expect(flip(state, "card-1")).toBe("front");
   });
 
   it("taps and untaps idempotently", () => {
     const state = stateWithCard();
-    expect(tapCard(state, "card-1")).toBe("tapped");
-    expect(tapCard(state, "card-1")).toBe("tapped");
-    expect(untapCard(state, "card-1")).toBe("upright");
-    expect(untapCard(state, "card-1")).toBe("upright");
+    expect(tap(state, "card-1")).toBe("tapped");
+    expect(tap(state, "card-1")).toBe("tapped");
+    expect(untap(state, "card-1")).toBe("upright");
+    expect(untap(state, "card-1")).toBe("upright");
   });
 
-  it.each([flipCard, tapCard, untapCard])("rejects unknown cards without mutation", (command) => {
+  it.each([flip, tap, untap])("rejects unknown cards without mutation", (command) => {
     const state = new RoomState();
     expect(() => command(state, "missing")).toThrow("Unknown card");
     expect(state.cards.size).toBe(0);
   });
 
-  it.each([flipCard, tapCard, untapCard])(
+  it.each([flip, tap, untap])(
     "rejects independently manipulating stacked cards",
     (command) => {
       const state = stateWithCard("stack-1");
       expect(() => command(state, "card-1")).toThrow("stack");
+      expect(state.cards.get("card-1")).toMatchObject({
+        face: "front",
+        orientation: "upright",
+      });
+    },
+  );
+
+  it.each([flip, tap, untap])(
+    "refuses to manipulate a card another player is holding",
+    (command) => {
+      const state = stateWithCard();
+      state.locks.set(
+        "card:card-1",
+        new ObjectLockState({
+          objectKind: "card",
+          objectId: "card-1",
+          playerId: "bob",
+          expiresAt: 100,
+        }),
+      );
+      expect(() => command(state, "card-1")).toThrow("claimed by another player");
       expect(state.cards.get("card-1")).toMatchObject({
         face: "front",
         orientation: "upright",

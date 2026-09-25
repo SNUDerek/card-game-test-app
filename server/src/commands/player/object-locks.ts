@@ -11,6 +11,24 @@ function assertObjectExists(state: RoomState, object: TableObjectRef): void {
   }
 }
 
+/**
+ * Rejects the operation when another player holds a live lock on the object.
+ * Expired locks are swept so they never block an otherwise valid command.
+ */
+export function rejectForeignLock(
+  state: RoomState,
+  playerId: PlayerId,
+  object: TableObjectRef,
+  now: number,
+  message: string,
+): void {
+  const key = objectLockKey(object);
+  const lock = state.locks.get(key);
+  if (!lock) return;
+  if (lock.expiresAt <= now) state.locks.delete(key);
+  else if (lock.playerId !== playerId) throw new DomainCommandError(message);
+}
+
 export function claimObject(
   state: RoomState,
   playerId: PlayerId,

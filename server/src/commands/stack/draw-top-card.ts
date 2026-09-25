@@ -1,12 +1,9 @@
-import { WORLD_COORDINATE_LIMIT, type DrawCardPayload, type PlayerId } from "@card-table/shared";
+import type { DrawCardPayload, PlayerId } from "@card-table/shared";
 import type { CardInstanceState, RoomState } from "../../rooms/state/RoomState.js";
 import { DomainCommandError } from "../errors.js";
-import {
-  collapseStackIfNeeded,
-  getStack,
-  highestTableZIndex,
-  rejectForeignLock,
-} from "./stack-helpers.js";
+import { rejectForeignLock } from "../player/object-locks.js";
+import { assertWorldPosition } from "../world-position.js";
+import { collapseStackIfNeeded, getStack, highestTableZIndex } from "./stack-helpers.js";
 
 export function drawTopCard(
   state: RoomState,
@@ -22,9 +19,7 @@ export function drawTopCard(
     now,
     "The stack is claimed by another player.",
   );
-  if (Math.abs(payload.x) > WORLD_COORDINATE_LIMIT || Math.abs(payload.y) > WORLD_COORDINATE_LIMIT) {
-    throw new DomainCommandError(`Card position must be within ±${WORLD_COORDINATE_LIMIT} world units.`);
-  }
+  assertWorldPosition(payload);
   const cardId = stack.cardIds.at(-1);
   const card = cardId === undefined ? undefined : state.cards.get(cardId);
   if (!card || card.stackId !== stack.id || stack.cardIds.length < 2) {
