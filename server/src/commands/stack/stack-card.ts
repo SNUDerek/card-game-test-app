@@ -6,7 +6,12 @@ import {
 import type { RoomState } from "../../rooms/state/RoomState.js";
 import { DomainCommandError } from "../errors.js";
 import { getStandaloneCard } from "../card/card-access.js";
-import { addCardToStack, createStack, getStack } from "./stack-helpers.js";
+import {
+  addCardToStack,
+  createStack,
+  getStack,
+  rejectForeignLock,
+} from "./stack-helpers.js";
 
 function requireOwnedSourceLock(
   state: RoomState,
@@ -19,20 +24,6 @@ function requireOwnedSourceLock(
   if (!lock || lock.expiresAt <= now || lock.playerId !== playerId) {
     if (lock && lock.expiresAt <= now) state.locks.delete(key);
     throw new DomainCommandError("The source card must be claimed by this player.");
-  }
-}
-
-function rejectOtherOwner(
-  state: RoomState,
-  playerId: PlayerId,
-  object: { kind: "card" | "stack"; id: string },
-  now: number,
-): void {
-  const key = objectLockKey(object);
-  const lock = state.locks.get(key);
-  if (lock && lock.expiresAt <= now) state.locks.delete(key);
-  else if (lock && lock.playerId !== playerId) {
-    throw new DomainCommandError("The stack target is claimed by another player.");
   }
 }
 
@@ -51,7 +42,13 @@ export function stackCard(
       throw new DomainCommandError("A card cannot be stacked onto itself.");
     }
     const target = getStandaloneCard(state, payload.target.cardId);
-    rejectOtherOwner(state, playerId, { kind: "card", id: target.id }, now);
+    rejectForeignLock(
+      state,
+      playerId,
+      { kind: "card", id: target.id },
+      now,
+      "The stack target is claimed by another player.",
+    );
     if (source.face !== target.face) {
       throw new DomainCommandError("Cards must have matching faces to stack.");
     }
@@ -62,7 +59,13 @@ export function stackCard(
   }
 
   const stack = getStack(state, payload.target.stackId);
-  rejectOtherOwner(state, playerId, { kind: "stack", id: stack.id }, now);
+  rejectForeignLock(
+    state,
+    playerId,
+    { kind: "stack", id: stack.id },
+    now,
+    "The stack target is claimed by another player.",
+  );
   const topId = stack.cardIds.at(-1);
   const top = topId === undefined ? undefined : state.cards.get(topId);
   if (!top || top.stackId !== stack.id) {

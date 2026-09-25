@@ -6,6 +6,7 @@ import {
 } from "@card-table/shared";
 import { CardInstanceState, type RoomState } from "../../rooms/state/RoomState.js";
 import { DomainCommandError } from "../errors.js";
+import { highestTableZIndex } from "../stack/stack-helpers.js";
 
 export function spawnCard(
   state: RoomState,
@@ -25,14 +26,6 @@ export function spawnCard(
     );
   }
 
-  const zIndex = [...state.cards.values()].reduce(
-    (highest, card) => Math.max(highest, card.zIndex),
-    -1,
-  );
-  const stackZIndex = [...state.stacks.values()].reduce(
-    (highest, stack) => Math.max(highest, stack.zIndex),
-    -1,
-  );
   const card = new CardInstanceState({
     id: createId(),
     definitionId: payload.definitionId,
@@ -40,7 +33,7 @@ export function spawnCard(
     orientation: "upright",
     x: payload.x,
     y: payload.y,
-    zIndex: Math.max(zIndex, stackZIndex) + 1,
+    zIndex: highestTableZIndex(state) + 1,
   });
 
   state.cards.set(card.id, card);

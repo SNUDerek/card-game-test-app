@@ -32,6 +32,7 @@ export function Table() {
   // The menu acts on live card state, so it closes itself if the card is
   // deleted or restacked by another player while it is open.
   const menuCard = cardMenu ? cards.find((card) => card.id === cardMenu.cardId) : undefined;
+  const cardsById = useMemo(() => new Map(cards.map((card) => [card.id, card])), [cards]);
   const snapTarget = useMemo(() => {
     const active = Object.entries(drag.localPositions)[0];
     return active ? findStackTarget(active[0], active[1], cards, stacks) : null;
@@ -124,7 +125,7 @@ export function Table() {
                   if (object.kind === "stack") return (
                     <Stack key={object.stack.id} stack={object.stack}
                       position={stackDrag.localPositions[object.stack.id] ?? object.stack}
-                      cards={new Map(cards.map((card) => [card.id, card]))}
+                      cards={cardsById}
                       definitionsById={definitionsById}
                       onDragStart={stackDrag.startDrag}
                       onDragMove={stackDrag.moveDrag}

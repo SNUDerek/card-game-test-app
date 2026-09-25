@@ -29,28 +29,54 @@ describe("stack manipulation", () => {
 
   it("draws exactly the top card and preserves a multi-card stack", () => {
     const state = stateWithStack(3);
-    const drawn = drawTopCard(state, { stackId: "stack-1", x: 100, y: 200 });
+    const drawn = drawTopCard(state, "alice", { stackId: "stack-1", x: 100, y: 200 }, 10);
     expect(drawn).toMatchObject({ id: "card-2", stackId: undefined, x: 100, y: 200 });
     expect([...state.stacks.get("stack-1")!.cardIds]).toEqual(["card-0", "card-1"]);
   });
 
   it("atomically collapses a two-card stack after drawing", () => {
     const state = stateWithStack(2);
-    drawTopCard(state, { stackId: "stack-1", x: 100, y: 200 });
+    drawTopCard(state, "alice", { stackId: "stack-1", x: 100, y: 200 }, 10);
     expect(state.stacks.size).toBe(0);
     expect(state.cards.get("card-0")).toMatchObject({ stackId: undefined, x: 10, y: 20, zIndex: 4 });
   });
 
+  it("refuses to draw from or delete a stack another player holds", () => {
+    const state = stateWithStack();
+    state.locks.set("stack:stack-1", new ObjectLockState({
+      objectKind: "stack", objectId: "stack-1", playerId: "bob", expiresAt: 100,
+    }));
+    const before = state.toJSON();
+    expect(() => drawTopCard(state, "alice", { stackId: "stack-1", x: 1, y: 2 }, 10))
+      .toThrow("claimed by another player");
+    expect(() => deleteStack(state, "alice", "stack-1", 10)).toThrow("claimed by another player");
+    expect(state.toJSON()).toEqual(before);
+
+    // The same commands succeed once the foreign lock has expired.
+    drawTopCard(state, "alice", { stackId: "stack-1", x: 1, y: 2 }, 200);
+    expect(state.cards.get("card-2")).toMatchObject({ stackId: undefined });
+  });
+
+  it("releases the stack lock when a stack collapses", () => {
+    const state = stateWithStack(2);
+    state.locks.set("stack:stack-1", new ObjectLockState({
+      objectKind: "stack", objectId: "stack-1", playerId: "alice", expiresAt: 100,
+    }));
+    drawTopCard(state, "alice", { stackId: "stack-1", x: 100, y: 200 }, 10);
+    expect(state.stacks.size).toBe(0);
+    expect(state.locks.has("stack:stack-1")).toBe(false);
+  });
+
   it("deletes a whole consistent stack and rejects inconsistent state", () => {
     const state = stateWithStack();
-    deleteStack(state, "stack-1");
+    deleteStack(state, "alice", "stack-1", 10);
     expect(state.cards.size).toBe(0);
     expect(state.stacks.size).toBe(0);
 
     const broken = stateWithStack();
     broken.cards.get("card-1")!.stackId = "wrong";
     const before = broken.toJSON();
-    expect(() => deleteStack(broken, "stack-1")).toThrow("inconsistent");
+    expect(() => deleteStack(broken, "alice", "stack-1", 10)).toThrow("inconsistent");
     expect(broken.toJSON()).toEqual(before);
   });
 });
