@@ -6,6 +6,7 @@ export const PlayerState = schema(
     id: t.string(),
     displayName: t.string(),
     connected: t.boolean().default(true),
+    joinOrder: t.number(),
   },
   "Player",
 );
@@ -55,6 +56,12 @@ export const RoomState = schema(
     stacks: t.map(CardStackState),
     players: t.map(PlayerState),
     locks: t.map(ObjectLockState),
+    /**
+     * Canonical room host. Clients decide whether they are host by comparing
+     * their own PlayerId against this; there is no per-player host flag.
+     * Empty only before the first player joins.
+     */
+    hostPlayerId: t.string().default(""),
   },
   "RoomState",
 );

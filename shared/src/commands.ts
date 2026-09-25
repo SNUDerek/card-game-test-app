@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { PlayerId } from "./ids.js";
 
 export const TABLE_COMMANDS = {
   SPAWN_CARD: "SPAWN_CARD",
@@ -15,6 +16,23 @@ export const TABLE_COMMANDS = {
   DRAW_CARD: "DRAW_CARD",
   DELETE_STACK: "DELETE_STACK",
 } as const;
+
+/**
+ * Room-session commands. Unlike TABLE_COMMANDS these do not mutate the
+ * tabletop; they let a connection ask about itself.
+ */
+export const ROOM_COMMANDS = {
+  /**
+   * Asks which synchronized player this connection is. PlayerIds are
+   * server-generated and deliberately independent of the Colyseus session id,
+   * so a client cannot derive this on its own.
+   */
+  SESSION: "SESSION",
+} as const;
+
+export interface SessionResult {
+  playerId: PlayerId;
+}
 
 export const PositionSchema = z.object({
   x: z.number().finite(),

@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -18,6 +19,9 @@ import type {
   StackCardPayload,
   MoveStackPayload,
   DrawCardPayload,
+  Player,
+  PlayerId,
+  RoomId,
 } from "@card-table/shared";
 import {
   claimObject as sendClaimObject,
@@ -29,21 +33,53 @@ import {
   untapCard as sendUntapCard,
   bringToFront as sendBringToFront,
   deleteCard as sendDeleteCard,
+  requestSession,
   stackCard as sendStackCard,
   moveStack as sendMoveStack,
   drawCard as sendDrawCard,
   deleteStack as sendDeleteStack,
 } from "./commands";
+import {
+  clearStoredSession,
+  describeConnectionError,
+  parseRoomIdFromPath,
+  readStoredSession,
+  roomPath,
+  storeSession,
+} from "./session";
 
 interface ClientRoomState {
   cards: Map<string, CardInstance>;
   stacks: Map<string, CardStack>;
+  players: Map<string, Player>;
+  hostPlayerId: PlayerId;
+}
+
+export type ConnectionStatus = "disconnected" | "connecting" | "connected";
+
+export interface CreateRoomRequest {
+  displayName: string;
+  password?: string;
+}
+
+export interface JoinRoomRequest extends CreateRoomRequest {
+  roomId: RoomId;
 }
 
 interface MultiplayerValue {
+  status: ConnectionStatus;
+  roomId: RoomId | null;
+  /** Room id from the shared URL, present before this client has joined. */
+  invitedRoomId: RoomId | null;
+  selfPlayerId: PlayerId | null;
+  hostPlayerId: PlayerId;
+  players: Player[];
   cards: CardInstance[];
   stacks: CardStack[];
   connectionError: string | null;
+  createRoom(request: CreateRoomRequest): Promise<void>;
+  joinRoom(request: JoinRoomRequest): Promise<void>;
+  leaveRoom(): Promise<void>;
   spawnCard(payload: SpawnCardPayload): Promise<void>;
   claimObject(object: TableObjectRef): Promise<ClaimObjectResult>;
   releaseObject(object: TableObjectRef): Promise<void>;
@@ -67,202 +103,231 @@ function serverEndpoint(): string {
   return `${protocol}//${window.location.hostname}:2567`;
 }
 
-function displayName(): string {
-  const storageKey = "card-table-display-name";
-  const existing = sessionStorage.getItem(storageKey);
-  if (existing) return existing;
-  const generated = `Player-${crypto.randomUUID().slice(0, 8)}`;
-  sessionStorage.setItem(storageKey, generated);
-  return generated;
-}
-
 export function MultiplayerProvider({ children }: { children: ReactNode }) {
-  const [room, setRoom] = useState<Room<any, ClientRoomState> | null>(null);
+  const client = useMemo(() => new Client(serverEndpoint()), []);
+  const roomRef = useRef<Room<any, ClientRoomState> | null>(null);
+  const [status, setStatus] = useState<ConnectionStatus>("disconnected");
+  const [roomId, setRoomId] = useState<RoomId | null>(null);
+  const [invitedRoomId, setInvitedRoomId] = useState<RoomId | null>(() =>
+    parseRoomIdFromPath(window.location.pathname),
+  );
+  const [selfPlayerId, setSelfPlayerId] = useState<PlayerId | null>(null);
+  const [hostPlayerId, setHostPlayerId] = useState<PlayerId>("");
+  const [players, setPlayers] = useState<Player[]>([]);
   const [cards, setCards] = useState<CardInstance[]>([]);
   const [stacks, setStacks] = useState<CardStack[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    let joinedRoom: Room<any, ClientRoomState> | undefined;
+  const resetSession = useCallback(() => {
+    roomRef.current = null;
+    setStatus("disconnected");
+    setRoomId(null);
+    setSelfPlayerId(null);
+    setHostPlayerId("");
+    setPlayers([]);
+    setCards([]);
+    setStacks([]);
+  }, []);
 
-    void new Client(serverEndpoint())
-      .joinOrCreate<ClientRoomState>("table", { displayName: displayName() })
-      .then((nextRoom) => {
-        joinedRoom = nextRoom;
-        if (!active) {
-          void nextRoom.leave();
-          return;
-        }
+  const attachRoom = useCallback(
+    (room: Room<any, ClientRoomState>) => {
+      roomRef.current = room;
 
-        const syncCards = (state: ClientRoomState) => {
-          setCards(
-            [...state.cards.values()].map((card) => ({
-              id: card.id,
-              definitionId: card.definitionId,
-              face: card.face,
-              orientation: card.orientation,
-              x: card.x,
-              y: card.y,
-              stackId: card.stackId,
-              zIndex: card.zIndex,
-            })),
-          );
-          setStacks([...state.stacks.values()].map((stack) => ({
+      const syncState = (state: ClientRoomState) => {
+        setCards(
+          [...state.cards.values()].map((card) => ({
+            id: card.id,
+            definitionId: card.definitionId,
+            face: card.face,
+            orientation: card.orientation,
+            x: card.x,
+            y: card.y,
+            stackId: card.stackId,
+            zIndex: card.zIndex,
+          })),
+        );
+        setStacks(
+          [...state.stacks.values()].map((stack) => ({
             id: stack.id,
             x: stack.x,
             y: stack.y,
             cardIds: [...stack.cardIds],
             zIndex: stack.zIndex,
-          })));
-        };
-        syncCards(nextRoom.state);
-        nextRoom.onStateChange(syncCards);
-        nextRoom.onLeave(() => {
-          if (active) setConnectionError("Disconnected from the tabletop server.");
+          })),
+        );
+        setPlayers(
+          [...state.players.values()]
+            .map((player) => ({
+              id: player.id,
+              displayName: player.displayName,
+              connected: player.connected,
+              joinOrder: player.joinOrder,
+            }))
+            .sort((a, b) => a.joinOrder - b.joinOrder),
+        );
+        setHostPlayerId(state.hostPlayerId);
+      };
+
+      syncState(room.state);
+      room.onStateChange(syncState);
+      room.onLeave(() => {
+        if (roomRef.current !== room) return;
+        // The seat is gone for good by now: the SDK retries transient drops on
+        // its own, and a reload would be refused the stale token anyway.
+        clearStoredSession();
+        setConnectionError("Disconnected from the tabletop server.");
+        resetSession();
+      });
+
+      // PlayerIds are server-generated, so ask which player this connection is.
+      void requestSession(room)
+        .then(({ playerId }) => {
+          if (roomRef.current === room) setSelfPlayerId(playerId);
+        })
+        .catch((cause: unknown) => {
+          console.warn("Could not resolve this player's identity:", cause);
         });
-        setRoom(nextRoom);
-      })
-      .catch((cause: unknown) => {
-        if (!active) return;
+
+      setRoomId(room.roomId);
+      setInvitedRoomId(room.roomId);
+      setStatus("connected");
+      setConnectionError(null);
+      storeSession({ roomId: room.roomId, reconnectionToken: room.reconnectionToken });
+      window.history.pushState({}, "", roomPath(room.roomId));
+    },
+    [resetSession],
+  );
+
+  const connect = useCallback(
+    async (open: () => Promise<Room<any, ClientRoomState>>) => {
+      setStatus("connecting");
+      setConnectionError(null);
+      try {
+        attachRoom(await open());
+      } catch (cause) {
         console.error("Failed to connect to tabletop room:", cause);
-        setConnectionError("Could not connect to the tabletop server.");
+        setConnectionError(describeConnectionError(cause));
+        resetSession();
+        throw cause;
+      }
+    },
+    [attachRoom, resetSession],
+  );
+
+  const createRoom = useCallback(
+    ({ displayName, password }: CreateRoomRequest) =>
+      connect(() => client.create<ClientRoomState>("table", { displayName, password })),
+    [client, connect],
+  );
+
+  const joinRoom = useCallback(
+    ({ roomId: targetRoomId, displayName, password }: JoinRoomRequest) =>
+      connect(() =>
+        client.joinById<ClientRoomState>(targetRoomId, { displayName, password }),
+      ),
+    [client, connect],
+  );
+
+  const leaveRoom = useCallback(async () => {
+    const room = roomRef.current;
+    roomRef.current = null;
+    clearStoredSession();
+    resetSession();
+    setInvitedRoomId(null);
+    setConnectionError(null);
+    window.history.pushState({}, "", "/");
+    if (room) await room.leave();
+  }, [resetSession]);
+
+  // Do not call room.leave() from an unmount cleanup. A reload must close the
+  // transport without consent so the server reserves this player's seat and
+  // the stored reconnection token remains usable.
+
+  // A reload lands back on /room/<id> with the seat still reserved during the
+  // server's grace period, so resume it before showing the lobby.
+  useEffect(() => {
+    const stored = readStoredSession(parseRoomIdFromPath(window.location.pathname));
+    if (!stored) return;
+
+    let active = true;
+    setStatus("connecting");
+    void client
+      .reconnect<ClientRoomState>(stored.reconnectionToken)
+      .then((room) => {
+        if (!active) {
+          void room.leave();
+          return;
+        }
+        attachRoom(room);
+      })
+      .catch(() => {
+        if (!active) return;
+        clearStoredSession();
+        setStatus("disconnected");
       });
 
     return () => {
       active = false;
-      if (joinedRoom) void joinedRoom.leave();
     };
+  }, [attachRoom, client]);
+
+  const withRoom = useCallback(<T,>(send: (room: Room<any, ClientRoomState>) => Promise<T>) => {
+    const room = roomRef.current;
+    if (!room) return Promise.reject(new Error("The tabletop is not connected yet."));
+    return send(room);
   }, []);
 
-  const spawnCard = useCallback(
-    async (payload: SpawnCardPayload) => {
-      if (!room) throw new Error("The tabletop is not connected yet.");
-      await sendSpawnCard(room, payload);
-    },
-    [room],
-  );
-
-  const claimObject = useCallback(
-    async (object: TableObjectRef) => {
-      if (!room) throw new Error("The tabletop is not connected yet.");
-      return sendClaimObject(room, { object });
-    },
-    [room],
-  );
-
-  const releaseObject = useCallback(
-    async (object: TableObjectRef) => {
-      if (!room) throw new Error("The tabletop is not connected yet.");
-      await sendReleaseObject(room, { object });
-    },
-    [room],
-  );
-
-  const moveCard = useCallback(
-    async (payload: MoveCardPayload, confirmed = false) => {
-      if (!room) throw new Error("The tabletop is not connected yet.");
-      await sendMoveCard(room, payload, confirmed);
-    },
-    [room],
-  );
-
-  const flipCard = useCallback(
-    async (cardId: string) => {
-      if (!room) throw new Error("The tabletop is not connected yet.");
-      await sendFlipCard(room, { cardId });
-    },
-    [room],
-  );
-
-  const tapCard = useCallback(
-    async (cardId: string) => {
-      if (!room) throw new Error("The tabletop is not connected yet.");
-      await sendTapCard(room, { cardId });
-    },
-    [room],
-  );
-
-  const untapCard = useCallback(
-    async (cardId: string) => {
-      if (!room) throw new Error("The tabletop is not connected yet.");
-      await sendUntapCard(room, { cardId });
-    },
-    [room],
-  );
-
-  const bringToFront = useCallback(
-    async (cardId: string) => {
-      if (!room) throw new Error("The tabletop is not connected yet.");
-      await sendBringToFront(room, { cardId });
-    },
-    [room],
-  );
-
-  const deleteCard = useCallback(
-    async (cardId: string) => {
-      if (!room) throw new Error("The tabletop is not connected yet.");
-      await sendDeleteCard(room, { cardId });
-    },
-    [room],
-  );
-
-  const stackCard = useCallback(async (payload: StackCardPayload) => {
-    if (!room) throw new Error("The tabletop is not connected yet.");
-    await sendStackCard(room, payload);
-  }, [room]);
-
-  const moveStack = useCallback(async (payload: MoveStackPayload, confirmed = false) => {
-    if (!room) throw new Error("The tabletop is not connected yet.");
-    await sendMoveStack(room, payload, confirmed);
-  }, [room]);
-
-  const drawCard = useCallback(async (payload: DrawCardPayload) => {
-    if (!room) throw new Error("The tabletop is not connected yet.");
-    await sendDrawCard(room, payload);
-  }, [room]);
-
-  const deleteStack = useCallback(async (stackId: string) => {
-    if (!room) throw new Error("The tabletop is not connected yet.");
-    await sendDeleteStack(room, { stackId });
-  }, [room]);
-
-  const value = useMemo(
+  const value = useMemo<MultiplayerValue>(
     () => ({
+      status,
+      roomId,
+      invitedRoomId,
+      selfPlayerId,
+      hostPlayerId,
+      players,
       cards,
       stacks,
       connectionError,
-      spawnCard,
-      claimObject,
-      releaseObject,
-      moveCard,
-      flipCard,
-      tapCard,
-      untapCard,
-      bringToFront,
-      deleteCard,
-      stackCard,
-      moveStack,
-      drawCard,
-      deleteStack,
+      createRoom,
+      joinRoom,
+      leaveRoom,
+      spawnCard: (payload) => withRoom(async (room) => void (await sendSpawnCard(room, payload))),
+      claimObject: (object) => withRoom((room) => sendClaimObject(room, { object })),
+      releaseObject: (object) =>
+        withRoom(async (room) => void (await sendReleaseObject(room, { object }))),
+      moveCard: (payload, confirmed = false) =>
+        withRoom(async (room) => void (await sendMoveCard(room, payload, confirmed))),
+      flipCard: (cardId) => withRoom(async (room) => void (await sendFlipCard(room, { cardId }))),
+      tapCard: (cardId) => withRoom(async (room) => void (await sendTapCard(room, { cardId }))),
+      untapCard: (cardId) =>
+        withRoom(async (room) => void (await sendUntapCard(room, { cardId }))),
+      bringToFront: (cardId) =>
+        withRoom(async (room) => void (await sendBringToFront(room, { cardId }))),
+      deleteCard: (cardId) =>
+        withRoom(async (room) => void (await sendDeleteCard(room, { cardId }))),
+      stackCard: (payload) =>
+        withRoom(async (room) => void (await sendStackCard(room, payload))),
+      moveStack: (payload, confirmed = false) =>
+        withRoom(async (room) => void (await sendMoveStack(room, payload, confirmed))),
+      drawCard: (payload) =>
+        withRoom(async (room) => void (await sendDrawCard(room, payload))),
+      deleteStack: (stackId) =>
+        withRoom(async (room) => void (await sendDeleteStack(room, { stackId }))),
     }),
     [
+      status,
+      roomId,
+      invitedRoomId,
+      selfPlayerId,
+      hostPlayerId,
+      players,
       cards,
       stacks,
       connectionError,
-      spawnCard,
-      claimObject,
-      releaseObject,
-      moveCard,
-      flipCard,
-      tapCard,
-      untapCard,
-      bringToFront,
-      deleteCard,
-      stackCard,
-      moveStack,
-      drawCard,
-      deleteStack,
+      createRoom,
+      joinRoom,
+      leaveRoom,
+      withRoom,
     ],
   );
 

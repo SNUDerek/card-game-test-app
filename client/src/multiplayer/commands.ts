@@ -13,6 +13,8 @@ import {
   type SetCardOrientationResult,
   type BringToFrontResult,
   type DeleteCardResult,
+  ROOM_COMMANDS,
+  type SessionResult,
   type StackCardPayload,
   type StackCardResult,
   type MoveStackPayload,
@@ -79,6 +81,10 @@ export function bringToFront(
 
 export function deleteCard(room: Room, payload: CardIdPayload): Promise<DeleteCardResult> {
   return room.request(TABLE_COMMANDS.DELETE_CARD, payload);
+}
+
+export function requestSession(room: Room): Promise<SessionResult> {
+  return room.request(ROOM_COMMANDS.SESSION);
 }
 
 export function stackCard(room: Room, payload: StackCardPayload): Promise<StackCardResult> {
