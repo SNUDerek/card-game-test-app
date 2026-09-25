@@ -5,4 +5,5 @@
 //
 // An empty serverUrl means "same origin": the client reaches the Colyseus
 // server through /colyseus on whatever host and port served this page.
-window.__CARD_TABLE__ = { serverUrl: "" };
+// An empty clientUrl means shared room links are built from that same address.
+window.__CARD_TABLE__ = { serverUrl: "", clientUrl: "" };

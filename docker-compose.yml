@@ -25,6 +25,9 @@ services:
       # same origin, which nginx proxies to the server container -- then only
       # CLIENT_PORT has to be reachable, on any hostname, with no rebuild.
       PUBLIC_SERVER_URL: "${PUBLIC_SERVER_URL:-}"
+      # Address shared room links should point at, port included. Leave empty to
+      # use whatever address the browser loaded the page from.
+      PUBLIC_CLIENT_URL: "${PUBLIC_CLIENT_URL:-}"
       # Internal address nginx proxies to; follows SERVER_PORT automatically.
       SERVER_UPSTREAM: "server:${SERVER_PORT:-2567}"
     depends_on:

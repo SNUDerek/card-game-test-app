@@ -12,6 +12,11 @@ export const COLYSEUS_PROXY_PATH = "/colyseus";
 export interface RuntimeConfig {
   /** Absolute URL of the Colyseus server. Empty means "same origin". */
   serverUrl?: string;
+  /**
+   * Base URL to build shareable room links from, including the port. Empty
+   * means "wherever this page was loaded from".
+   */
+  clientUrl?: string;
 }
 
 declare global {
@@ -45,4 +50,20 @@ export function resolveServerEndpoint(
 
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${location.host}${COLYSEUS_PROXY_PATH}`;
+}
+
+/**
+ * Base a shareable room link is built on.
+ *
+ * Defaults to the page's own origin, which is right whenever players reach the
+ * table by the same address. It is wrong when they do not: a link copied from a
+ * tunnel, a reverse proxy, or a session opened on the host itself carries
+ * whatever that browser used -- `localhost` included -- which is useless to the
+ * person receiving it. `clientUrl` names the address players should actually
+ * use, port and all.
+ */
+export function resolveJoinUrlBase(origin: string, runtime?: RuntimeConfig): string {
+  const configured = runtime?.clientUrl?.trim();
+  // Trailing slash removed so the room path does not produce a doubled slash.
+  return (configured || origin).replace(/\/+$/, "");
 }

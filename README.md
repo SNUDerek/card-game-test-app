@@ -58,6 +58,7 @@ Set these in `.env` (Compose reads it automatically):
 | `CLIENT_PORT` | `8080` | Port the UI is served on |
 | `SERVER_PORT` | `2567` | Port the server listens on, inside and outside the container |
 | `PUBLIC_SERVER_URL` | *(empty)* | Where browsers reach the server. Empty means "this same origin" |
+| `PUBLIC_CLIENT_URL` | *(empty)* | Address "Copy link" builds room links from. Empty means "the address this page was loaded from" |
 
 So to fit a host that only exposes 9000–9999:
 
@@ -78,6 +79,15 @@ http://jennifer.dereks.house:9000
 ```
 
 Share that URL and the room link; a co-developer needs nothing else.
+
+The **Copy link** button builds its URL from the address the browser used, so a
+session opened on the host itself copies a `localhost` link. Set
+`PUBLIC_CLIENT_URL` to the address players should actually use, port included,
+and every copied link points there regardless of who copies it:
+
+```ini
+PUBLIC_CLIENT_URL=http://jennifer.dereks.house:9000
+```
 
 Set `PUBLIC_SERVER_URL` **only** if you want browsers to reach the server directly
 instead of through the proxy — then `SERVER_PORT` must be reachable too:
