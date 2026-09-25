@@ -25,22 +25,46 @@ npm install
 npm run dev
 ```
 
-This starts the Colyseus/Express server on `:2567` and the Vite dev server on `:5173` (proxying `/cards` to the server).
+This starts the Colyseus/Express server on `:2567` and the Vite dev server on `:5173`.
+The Vite dev server automatically proxies HTTP requests for `/cards` and `/api` to the backend server.
+
+Open [http://localhost:5173](http://localhost:5173) in your browser to access the application.
 
 Other useful scripts:
 
 ```bash
 npm run typecheck   # type-check all workspaces
-npm run build        # build shared, server, and client
+npm run build       # build shared, server, and client
 ```
 
-## Docker
+## Docker deployment
+
+To run the application using Docker:
 
 ```bash
 docker compose up --build
 ```
 
-Server: `http://localhost:2567` (proxied game/API traffic), client: `http://localhost:8080`. The `cards/` directory is bind-mounted read-only into the server container so card content can be edited without rebuilding images.
+The application will be accessible at:
+- **Client UI:** [http://localhost:8080](http://localhost:8080)
+- **Colyseus/Express API:** `http://localhost:2567`
+
+The local `cards/` directory is bind-mounted as a read-only volume into the server container. This means you can add, remove, or modify card assets (`.jpg`/`.png` and `.json`) locally, and the server will recognize them without requiring a container rebuild (a backend restart is required to load new cards).
+
+## Usage Guide
+
+This app provides a generic, unopinionated tabletop environment. It does not enforce specific game rules but rather provides the primitives to simulate physical card interactions:
+
+1. **Lobby & Rooms:** Start by creating a room in the lobby (with an optional password). Share the generated URL with other players to let them join your table.
+2. **Card Browser:** Open the side panel to browse available cards loaded from the server's `cards/` directory.
+3. **Spawning Cards:** Drag any card from the card browser directly onto the tabletop.
+4. **Basic Interactions:**
+   - **Move:** Drag and drop cards anywhere on the table.
+   - **Preview:** Hover over a card to view a magnified preview.
+   - **Context Menu:** Right-click a card to bring up the context menu, where you can **Tap/Untap**, **Flip** (face-up/face-down), or **Delete** the card.
+5. **Stacks:**
+   - **Create:** Drag one standalone card onto another card (both must be facing the same way) to stack them.
+   - **Interact:** Dragging a stack moves the entire stack. Right-clicking a stack allows you to draw the top card, delete the stack, or flip the top card.
 
 ## test cards
 
