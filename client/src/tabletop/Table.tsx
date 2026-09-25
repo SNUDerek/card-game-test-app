@@ -1,7 +1,7 @@
 import { Stage, Layer, Rect, Group } from "react-konva";
 import { useEffect, useRef, useState } from "react";
 import { Card, getCardOrientationAction } from "./Card";
-import type { CardDefinition } from "@card-table/shared";
+import type { CardDefinition, CardOrientation } from "@card-table/shared";
 import { DEFAULT_VIEWPORT, screenToWorld } from "./viewport";
 import { useCardCatalog } from "../features/card-browser/CardCatalogContext";
 import { CARD_DEFINITION_MIME_TYPE } from "../features/card-browser/CardBrowser";
@@ -17,6 +17,12 @@ export function Table() {
   const { cards, connectionError, spawnCard } = multiplayer;
   const interpolatedPositions = useInterpolatedCardPositions(cards);
   const drag = useCardDrag(multiplayer);
+  const [cardMenu, setCardMenu] = useState<{
+    cardId: string;
+    orientation: CardOrientation;
+    x: number;
+    y: number;
+  } | null>(null);
 
   useEffect(() => {
     for (const card of cards) {
@@ -67,6 +73,7 @@ export function Table() {
           console.error("Failed to spawn card:", cause);
         });
       }}
+      onPointerDown={() => setCardMenu(null)}
     >
       {size.width > 0 && size.height > 0 && (
         <Stage width={size.width} height={size.height}>
@@ -104,13 +111,8 @@ export function Table() {
                           console.warn("Card flip rejected:", cause);
                         });
                       }}
-                      onToggleTap={(cardId, orientation) => {
-                        const command = getCardOrientationAction(orientation) === "untap"
-                          ? multiplayer.untapCard
-                          : multiplayer.tapCard;
-                        void command(cardId).catch((cause: unknown) => {
-                          console.warn("Card orientation change rejected:", cause);
-                        });
+                      onContextMenu={(cardId, orientation, position) => {
+                        setCardMenu({ cardId, orientation, ...position });
                       }}
                       onBringToFront={(cardId) => {
                         void multiplayer.bringToFront(cardId).catch((cause: unknown) => {
@@ -125,6 +127,43 @@ export function Table() {
         </Stage>
       )}
       {connectionError && <p className="tabletop-error">{connectionError}</p>}
+      {cardMenu && (
+        <div
+          className="card-context-menu"
+          role="menu"
+          style={{ left: cardMenu.x, top: cardMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const command = getCardOrientationAction(cardMenu.orientation) === "untap"
+                ? multiplayer.untapCard
+                : multiplayer.tapCard;
+              void command(cardMenu.cardId).catch((cause: unknown) => {
+                console.warn("Card orientation change rejected:", cause);
+              });
+              setCardMenu(null);
+            }}
+          >
+            {cardMenu.orientation === "tapped" ? "Untap" : "Tap"}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="danger"
+            onClick={() => {
+              void multiplayer.deleteCard(cardMenu.cardId).catch((cause: unknown) => {
+                console.warn("Card deletion rejected:", cause);
+              });
+              setCardMenu(null);
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }

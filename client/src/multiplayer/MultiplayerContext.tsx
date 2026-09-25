@@ -24,6 +24,7 @@ import {
   tapCard as sendTapCard,
   untapCard as sendUntapCard,
   bringToFront as sendBringToFront,
+  deleteCard as sendDeleteCard,
 } from "./commands";
 
 interface ClientRoomState {
@@ -41,6 +42,7 @@ interface MultiplayerValue {
   tapCard(cardId: string): Promise<void>;
   untapCard(cardId: string): Promise<void>;
   bringToFront(cardId: string): Promise<void>;
+  deleteCard(cardId: string): Promise<void>;
 }
 
 const MultiplayerContext = createContext<MultiplayerValue | null>(null);
@@ -175,6 +177,14 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     [room],
   );
 
+  const deleteCard = useCallback(
+    async (cardId: string) => {
+      if (!room) throw new Error("The tabletop is not connected yet.");
+      await sendDeleteCard(room, { cardId });
+    },
+    [room],
+  );
+
   const value = useMemo(
     () => ({
       cards,
@@ -187,6 +197,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       tapCard,
       untapCard,
       bringToFront,
+      deleteCard,
     }),
     [
       cards,
@@ -199,6 +210,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       tapCard,
       untapCard,
       bringToFront,
+      deleteCard,
     ],
   );
 
