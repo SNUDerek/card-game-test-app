@@ -151,19 +151,21 @@ Minimum required fields:
 
 ```json
 {
-  "id": 1,
-  "name": "Fireball",
+  "id": "spell-fireball",
   "type": "spell",
   "body": "Deal 3 damage to one target."
 }
 ```
 
-The `id` field must be an integer and the `name` field must be a string. The
-application must use `name` as the card's display name and must not infer a name
-from the filename.
+The `id` field is an opaque string, not required to follow any particular format.
+The application derives each card's display name from its filename stem and must
+not require a `name` field in the JSON; if a JSON `name` (or any other field
+beyond `id`, `type`, `body`) is present, it is preserved as additional metadata
+rather than used as the display name.
 
-Card IDs and names are not required to be unique. Duplicate values for either
-field must be accepted for now.
+Card definition IDs must be unique across the catalog. The loader rejects the
+entire catalog with a clear aggregated error if any `id` is duplicated.
+Filename-derived display names are not required to be unique.
 
 ---
 
