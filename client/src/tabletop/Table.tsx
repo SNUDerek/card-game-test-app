@@ -20,6 +20,12 @@ export function Table() {
   const interpolatedPositions = useInterpolatedCardPositions(cards);
   const drag = useCardDrag(multiplayer);
   const { magnifiedCardId, magnifyCard, unmagnifyCard } = useLocalUiState();
+  const [cardMenu, setCardMenu] = useState<{ cardId: string; x: number; y: number } | null>(
+    null,
+  );
+  // The menu acts on live card state, so it closes itself if the card is
+  // deleted or restacked by another player while it is open.
+  const menuCard = cardMenu ? cards.find((card) => card.id === cardMenu.cardId) : undefined;
 
   const magnified = useMemo(() => {
     const card = cards.find((candidate) => candidate.id === magnifiedCardId);
@@ -80,6 +86,7 @@ export function Table() {
           console.error("Failed to spawn card:", cause);
         });
       }}
+      onPointerDown={() => setCardMenu(null)}
     >
       {size.width > 0 && size.height > 0 && (
         <Stage width={size.width} height={size.height}>
@@ -117,13 +124,8 @@ export function Table() {
                           console.warn("Card flip rejected:", cause);
                         });
                       }}
-                      onToggleTap={(cardId, orientation) => {
-                        const command = getCardOrientationAction(orientation) === "untap"
-                          ? multiplayer.untapCard
-                          : multiplayer.tapCard;
-                        void command(cardId).catch((cause: unknown) => {
-                          console.warn("Card orientation change rejected:", cause);
-                        });
+                      onContextMenu={(cardId, position) => {
+                        setCardMenu({ cardId, ...position });
                       }}
                       onHoverStart={magnifyCard}
                       onHoverEnd={unmagnifyCard}
@@ -147,6 +149,43 @@ export function Table() {
         />
       )}
       {connectionError && <p className="tabletop-error">{connectionError}</p>}
+      {cardMenu && menuCard && (
+        <div
+          className="card-context-menu"
+          role="menu"
+          style={{ left: cardMenu.x, top: cardMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const command = getCardOrientationAction(menuCard.orientation) === "untap"
+                ? multiplayer.untapCard
+                : multiplayer.tapCard;
+              void command(cardMenu.cardId).catch((cause: unknown) => {
+                console.warn("Card orientation change rejected:", cause);
+              });
+              setCardMenu(null);
+            }}
+          >
+            {menuCard.orientation === "tapped" ? "Untap" : "Tap"}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="danger"
+            onClick={() => {
+              void multiplayer.deleteCard(cardMenu.cardId).catch((cause: unknown) => {
+                console.warn("Card deletion rejected:", cause);
+              });
+              setCardMenu(null);
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }
