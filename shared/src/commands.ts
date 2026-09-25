@@ -4,6 +4,7 @@ export const TABLE_COMMANDS = {
   SPAWN_CARD: "SPAWN_CARD",
   CLAIM_OBJECT: "CLAIM_OBJECT",
   RELEASE_OBJECT: "RELEASE_OBJECT",
+  MOVE_CARD: "MOVE_CARD",
 } as const;
 
 export const PositionSchema = z.object({
@@ -40,6 +41,15 @@ export interface ClaimObjectResult {
 
 export interface ReleaseObjectResult {
   released: true;
+}
+
+export const MoveCardPayloadSchema = PositionSchema.extend({
+  cardId: z.string().min(1),
+});
+export type MoveCardPayload = z.infer<typeof MoveCardPayloadSchema>;
+
+export interface MoveCardResult {
+  moved: true;
 }
 
 export function objectLockKey(object: TableObjectRef): string {

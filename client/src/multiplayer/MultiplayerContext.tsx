@@ -12,11 +12,13 @@ import type {
   CardInstance,
   ClaimObjectResult,
   SpawnCardPayload,
+  MoveCardPayload,
   TableObjectRef,
 } from "@card-table/shared";
 import {
   claimObject as sendClaimObject,
   releaseObject as sendReleaseObject,
+  moveCard as sendMoveCard,
   spawnCard as sendSpawnCard,
 } from "./commands";
 
@@ -30,6 +32,7 @@ interface MultiplayerValue {
   spawnCard(payload: SpawnCardPayload): Promise<void>;
   claimObject(object: TableObjectRef): Promise<ClaimObjectResult>;
   releaseObject(object: TableObjectRef): Promise<void>;
+  moveCard(payload: MoveCardPayload, confirmed?: boolean): Promise<void>;
 }
 
 const MultiplayerContext = createContext<MultiplayerValue | null>(null);
@@ -68,7 +71,18 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
         }
 
         const syncCards = (state: ClientRoomState) => {
-          setCards([...state.cards.values()].map((card) => ({ ...card })));
+          setCards(
+            [...state.cards.values()].map((card) => ({
+              id: card.id,
+              definitionId: card.definitionId,
+              face: card.face,
+              orientation: card.orientation,
+              x: card.x,
+              y: card.y,
+              stackId: card.stackId,
+              zIndex: card.zIndex,
+            })),
+          );
         };
         syncCards(nextRoom.state);
         nextRoom.onStateChange(syncCards);
@@ -113,9 +127,17 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     [room],
   );
 
+  const moveCard = useCallback(
+    async (payload: MoveCardPayload, confirmed = false) => {
+      if (!room) throw new Error("The tabletop is not connected yet.");
+      await sendMoveCard(room, payload, confirmed);
+    },
+    [room],
+  );
+
   const value = useMemo(
-    () => ({ cards, connectionError, spawnCard, claimObject, releaseObject }),
-    [cards, connectionError, spawnCard, claimObject, releaseObject],
+    () => ({ cards, connectionError, spawnCard, claimObject, releaseObject, moveCard }),
+    [cards, connectionError, spawnCard, claimObject, releaseObject, moveCard],
   );
 
   return <MultiplayerContext.Provider value={value}>{children}</MultiplayerContext.Provider>;

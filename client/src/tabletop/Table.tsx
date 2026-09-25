@@ -6,12 +6,26 @@ import { DEFAULT_VIEWPORT, screenToWorld } from "./viewport";
 import { useCardCatalog } from "../features/card-browser/CardCatalogContext";
 import { CARD_DEFINITION_MIME_TYPE } from "../features/card-browser/CardBrowser";
 import { useMultiplayer } from "../multiplayer/MultiplayerContext";
+import { useCardDrag } from "./interactions/drag";
+import { useInterpolatedCardPositions } from "./interactions/interpolation";
 
 export function Table() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const { definitionsById } = useCardCatalog();
-  const { cards, connectionError, spawnCard } = useMultiplayer();
+  const multiplayer = useMultiplayer();
+  const { cards, connectionError, spawnCard } = multiplayer;
+  const interpolatedPositions = useInterpolatedCardPositions(cards);
+  const drag = useCardDrag(multiplayer);
+
+  useEffect(() => {
+    for (const card of cards) {
+      const local = drag.localPositions[card.id];
+      if (local && local.x === card.x && local.y === card.y) {
+        drag.clearLocalPosition(card.id);
+      }
+    }
+  }, [cards, drag.localPositions, drag.clearLocalPosition]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -72,7 +86,21 @@ export function Table() {
                     card.definitionId,
                   );
                   if (!definition) return null;
-                  return <Card key={card.id} definition={definition} {...card} />;
+                  const position = drag.localPositions[card.id] ??
+                    interpolatedPositions[card.id] ?? { x: card.x, y: card.y };
+                  return (
+                    <Card
+                      key={card.id}
+                      definition={definition}
+                      {...card}
+                      {...position}
+                      onDragStart={drag.startDrag}
+                      onDragMove={drag.moveDrag}
+                      onDragEnd={(cardId, nextPosition) => {
+                        void drag.endDrag(cardId, nextPosition);
+                      }}
+                    />
+                  );
                 })}
             </Group>
           </Layer>

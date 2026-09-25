@@ -4,6 +4,7 @@ import {
   JoinRoomOptionsSchema,
   ClaimObjectPayloadSchema,
   ReleaseObjectPayloadSchema,
+  MoveCardPayloadSchema,
   SpawnCardPayloadSchema,
   TABLE_COMMANDS,
   type JoinRoomOptions,
@@ -18,6 +19,7 @@ import {
   releaseObject,
   releasePlayerLocks,
 } from "../commands/player/object-locks.js";
+import { moveCard } from "../commands/card/move-card.js";
 
 export interface TableRoomOptions {
   cardDefinitionIds?: string[];
@@ -88,6 +90,20 @@ export class TableRoom extends Room<{ state: RoomState }> {
       try {
         releaseObject(this.state, playerId, parsed.data.object);
         return { released: true as const };
+      } catch (error) {
+        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
+        throw error;
+      }
+    });
+    this.onMessage(TABLE_COMMANDS.MOVE_CARD, (client, rawPayload) => {
+      const parsed = MoveCardPayloadSchema.safeParse(rawPayload);
+      if (!parsed.success) throw new ServerError(400, "Invalid MOVE_CARD payload.");
+      const playerId = this.playerIdBySessionId.get(client.sessionId);
+      if (!playerId) throw new ServerError(403, "Player is not joined.");
+
+      try {
+        moveCard(this.state, playerId, parsed.data, Date.now(), this.lockTimeoutMs);
+        return { moved: true as const };
       } catch (error) {
         if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
         throw error;

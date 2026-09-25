@@ -155,4 +155,32 @@ describe("TableRoom connection lifecycle", () => {
     await alice.leave();
     expect(room.state.locks.size).toBe(0);
   });
+
+  it("only lets the lock owner move a standalone card", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+      definitionId: "spell-1",
+      x: 0,
+      y: 0,
+    });
+
+    await expect(
+      alice.request(TABLE_COMMANDS.MOVE_CARD, { cardId, x: 10, y: 20 }),
+    ).rejects.toThrow("must be claimed");
+    await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, {
+      object: { kind: "card", id: cardId },
+    });
+    await expect(
+      bob.request(TABLE_COMMANDS.MOVE_CARD, { cardId, x: 10, y: 20 }),
+    ).rejects.toThrow("must be claimed");
+
+    await alice.request(TABLE_COMMANDS.MOVE_CARD, { cardId, x: 125, y: 240 });
+    await room.waitForNextPatch();
+
+    expect(room.state.cards.get(cardId)).toMatchObject({ x: 125, y: 240 });
+    expect(alice.state.toJSON()).toEqual(room.state.toJSON());
+    expect(bob.state.toJSON()).toEqual(room.state.toJSON());
+  });
 });
