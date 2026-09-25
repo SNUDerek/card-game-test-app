@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { CardInstance, CardStack, Player } from "@card-table/shared";
-import { resolveHoverHighlights } from "./HoverAttribution";
+import { getHighlightFootprint, resolveHoverHighlights } from "./HoverAttribution";
 import { playerColor } from "../features/room/player-colors";
+import { CARD_HEIGHT, CARD_WIDTH } from "../cards/CardRenderer";
 import { STACK_OFFSET } from "./interactions/snap-detection";
 
 function player(id: string, joinOrder: number, hoveredCardId?: string): Player {
@@ -34,8 +35,27 @@ describe("resolveHoverHighlights", () => {
     );
 
     expect(highlights).toEqual([
-      { cardId: "card-1", displayName: "alice", color: playerColor(0), x: 100, y: 200 },
+      {
+        cardId: "card-1",
+        displayName: "alice",
+        color: playerColor(0),
+        x: 100,
+        y: 200,
+        orientation: "upright",
+      },
     ]);
+  });
+
+  it("carries the card's orientation, so the outline can turn with it", () => {
+    const tapped = [card("card-1", { orientation: "tapped" })];
+    const [highlight] = resolveHoverHighlights(
+      [player("alice", 0, "card-1")],
+      tapped,
+      noStacks,
+      "me",
+    );
+
+    expect(highlight!.orientation).toBe("tapped");
   });
 
   it("never marks the local player's own hover", () => {
@@ -84,5 +104,21 @@ describe("resolveHoverHighlights", () => {
     );
 
     expect(highlight).toMatchObject({ x: 10 + STACK_OFFSET, y: 20 + STACK_OFFSET });
+  });
+});
+
+describe("getHighlightFootprint", () => {
+  it("matches the card's own footprint when upright", () => {
+    expect(getHighlightFootprint("upright")).toEqual({
+      width: CARD_WIDTH,
+      height: CARD_HEIGHT,
+    });
+  });
+
+  it("swaps the axes for a tapped card, which is drawn a quarter turn over", () => {
+    expect(getHighlightFootprint("tapped")).toEqual({
+      width: CARD_HEIGHT,
+      height: CARD_WIDTH,
+    });
   });
 });

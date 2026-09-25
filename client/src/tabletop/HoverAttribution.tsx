@@ -1,7 +1,14 @@
 import { Group, Rect, Text } from "react-konva";
-import type { CardInstance, CardStack, Player, PlayerId } from "@card-table/shared";
+import type {
+  CardInstance,
+  CardOrientation,
+  CardStack,
+  Player,
+  PlayerId,
+} from "@card-table/shared";
 import { CARD_HEIGHT, CARD_WIDTH } from "../cards/CardRenderer";
 import { playerColor } from "../features/room/player-colors";
+import { getCardTransform } from "./Card";
 import { STACK_OFFSET } from "./interactions/snap-detection";
 
 export interface HoverHighlight {
@@ -11,11 +18,27 @@ export interface HoverHighlight {
   /** Card centre in world coordinates. */
   x: number;
   y: number;
+  orientation: CardOrientation;
 }
 
 const LABEL_HEIGHT = 22;
 const LABEL_GAP = 6;
 const OUTLINE_INSET = 4;
+
+/**
+ * Footprint a card occupies on the table once tapped cards are accounted for.
+ *
+ * A tapped card is drawn rotated a quarter turn, so it covers the table
+ * sideways: its width and height swap. The label is placed against this box so
+ * it clears the card in either orientation.
+ */
+export function getHighlightFootprint(orientation: CardOrientation) {
+  const tapped = orientation === "tapped";
+  return {
+    width: tapped ? CARD_HEIGHT : CARD_WIDTH,
+    height: tapped ? CARD_WIDTH : CARD_HEIGHT,
+  };
+}
 
 /**
  * Resolves who is hovering what into one highlight per card.
@@ -60,36 +83,53 @@ export function resolveHoverHighlights(
       color: playerColor(player.joinOrder),
       x: stack ? stack.x + offset : card.x,
       y: stack ? stack.y + offset : card.y,
+      orientation: card.orientation,
     };
   });
 }
 
 /** Non-interactive: presence must never intercept a pointer. */
 export function HoverAttribution({ highlight }: { highlight: HoverHighlight }) {
-  const left = highlight.x - CARD_WIDTH / 2;
-  const top = highlight.y - CARD_HEIGHT / 2;
+  // Same transform the card itself uses, so the outline turns with a tapped
+  // card instead of boxing it off-axis.
+  const transform = getCardTransform(highlight.orientation);
+  const footprint = getHighlightFootprint(highlight.orientation);
+  const labelLeft = highlight.x - footprint.width / 2;
+  const labelTop =
+    highlight.y - footprint.height / 2 - OUTLINE_INSET - LABEL_GAP - LABEL_HEIGHT;
 
   return (
     <Group listening={false}>
-      <Rect
-        x={left - OUTLINE_INSET}
-        y={top - OUTLINE_INSET}
-        width={CARD_WIDTH + OUTLINE_INSET * 2}
-        height={CARD_HEIGHT + OUTLINE_INSET * 2}
-        stroke={highlight.color}
-        strokeWidth={5}
-        cornerRadius={10}
-      />
-      <Group x={left} y={top - LABEL_HEIGHT - LABEL_GAP}>
+      <Group
+        x={highlight.x}
+        y={highlight.y}
+        rotation={transform.rotation}
+        offsetX={transform.offsetX}
+        offsetY={transform.offsetY}
+      >
         <Rect
-          width={CARD_WIDTH}
+          x={-OUTLINE_INSET}
+          y={-OUTLINE_INSET}
+          width={CARD_WIDTH + OUTLINE_INSET * 2}
+          height={CARD_HEIGHT + OUTLINE_INSET * 2}
+          stroke={highlight.color}
+          strokeWidth={5}
+          cornerRadius={10}
+        />
+      </Group>
+
+      {/* Deliberately outside the rotated group: the name stays upright and
+          readable however the card it belongs to is turned. */}
+      <Group x={labelLeft} y={labelTop}>
+        <Rect
+          width={footprint.width}
           height={LABEL_HEIGHT}
           fill={highlight.color}
           cornerRadius={6}
         />
         <Text
           text={highlight.displayName}
-          width={CARD_WIDTH}
+          width={footprint.width}
           height={LABEL_HEIGHT}
           align="center"
           verticalAlign="middle"
