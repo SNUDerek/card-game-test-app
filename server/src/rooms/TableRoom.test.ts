@@ -419,4 +419,29 @@ describe("TableRoom connection lifecycle", () => {
     expect(alice.state.toJSON()).toEqual(room.state.toJSON());
   });
 
+  it("throttles a command flood without dropping the room", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table", {
+      cardDefinitionIds: ["spell-1"],
+      commandRateLimit: { burst: 5, perSecond: 1 },
+    });
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+
+    const outcomes = await Promise.allSettled(
+      Array.from({ length: 40 }, () =>
+        alice.request(TABLE_COMMANDS.SPAWN_CARD, { definitionId: "spell-1", x: 0, y: 0 }),
+      ),
+    );
+    const accepted = outcomes.filter((outcome) => outcome.status === "fulfilled");
+    const throttled = outcomes.filter(
+      (outcome) => outcome.status === "rejected" && /Too many commands/.test(String(outcome.reason)),
+    );
+
+    expect(accepted.length).toBeLessThanOrEqual(6);
+    expect(throttled.length).toBe(outcomes.length - accepted.length);
+
+    // The room survives the flood and still serves the throttled player.
+    await room.waitForNextPatch();
+    expect(room.state.cards.size).toBe(accepted.length);
+    expect(alice.state.toJSON()).toEqual(room.state.toJSON());
+  });
 });

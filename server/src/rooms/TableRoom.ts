@@ -39,6 +39,11 @@ import { moveStack } from "../commands/stack/move-stack.js";
 import { drawTopCard } from "../commands/stack/draw-top-card.js";
 import { deleteStack } from "../commands/stack/delete-stack.js";
 import { bringStackToFrontIfNeeded } from "../commands/stack/stack-helpers.js";
+import {
+  CommandRateLimiter,
+  DEFAULT_COMMAND_RATE_LIMIT,
+  type RateLimitOptions,
+} from "./rate-limit.js";
 
 export interface TableRoomOptions {
   cardDefinitionIds?: string[];
@@ -47,6 +52,8 @@ export interface TableRoomOptions {
   password?: string;
   /** How long a dropped player keeps their identity. 0 disables reconnection. */
   reconnectionGraceSeconds?: number;
+  /** Per-connection command budget. Defaults to DEFAULT_COMMAND_RATE_LIMIT. */
+  commandRateLimit?: RateLimitOptions;
 }
 
 /**
@@ -76,11 +83,12 @@ export class TableRoom extends Room<{ state: RoomState }> {
   private passwordHash: RoomPasswordHash | undefined;
   private reconnectionGraceSeconds = DEFAULT_RECONNECTION_GRACE_SECONDS;
   private joinCount = 0;
+  private rateLimiter = new CommandRateLimiter();
 
   /**
-   * Registers one command with the checks every command needs: structural
-   * validation, a joined player, and domain errors mapped to a status.
-   * Registering through this is what keeps any single handler from
+   * Registers one command with the checks every command needs: a rate budget,
+   * structural validation, a joined player, and domain errors mapped to a
+   * status. Registering through this is what keeps any single handler from
    * quietly skipping one of them.
    */
   private command<Schema extends z.ZodType>(
@@ -91,6 +99,9 @@ export class TableRoom extends Room<{ state: RoomState }> {
   ): void {
     this.onMessage(name, (client, rawPayload) => {
       const now = Date.now();
+      if (!this.rateLimiter.tryConsume(client.sessionId, now)) {
+        throw new ServerError(429, "Too many commands; slow down.");
+      }
       const parsed = schema.safeParse(rawPayload);
       if (!parsed.success) throw new ServerError(400, `Invalid ${name} payload.`);
       const playerId = this.playerIdBySessionId.get(client.sessionId);
@@ -116,6 +127,10 @@ export class TableRoom extends Room<{ state: RoomState }> {
       options.reconnectionGraceSeconds ?? DEFAULT_RECONNECTION_GRACE_SECONDS;
     // Rooms are shared by URL, never matchmade: keep them out of any listing.
     void this.setPrivate(true);
+    this.rateLimiter = new CommandRateLimiter(
+      options.commandRateLimit ?? DEFAULT_COMMAND_RATE_LIMIT,
+    );
+
     this.command(ROOM_COMMANDS.SESSION, z.unknown(), ({ playerId }): SessionResult => ({
       playerId,
     }));
@@ -208,6 +223,7 @@ export class TableRoom extends Room<{ state: RoomState }> {
     if (!playerId) return;
 
     this.playerIdBySessionId.delete(client.sessionId);
+    this.rateLimiter.forget(client.sessionId);
     // Locks are released immediately rather than held for the grace period
     // (data-models.md §51), so a dropped player never blocks the table.
     releasePlayerLocks(this.state, playerId);
