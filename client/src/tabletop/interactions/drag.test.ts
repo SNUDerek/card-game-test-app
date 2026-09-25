@@ -59,7 +59,32 @@ describe("drag movement throttling", () => {
     await act(async () => Promise.resolve());
 
     expect(result.current.localPositions["card-1"]).toBeUndefined();
+    expect(result.current.activeDrag).toBeNull();
     expect(commands.moveCard).not.toHaveBeenCalled();
+  });
+
+  it("exposes the active drag explicitly when local positions contain multiple cards", async () => {
+    const commands = {
+      claimObject: vi.fn().mockResolvedValue({ expiresAt: 5_000 }),
+      moveCard: vi.fn().mockResolvedValue(undefined),
+      releaseObject: vi.fn().mockResolvedValue(undefined),
+      stackCard: vi.fn().mockResolvedValue(undefined),
+    };
+    const { result } = renderHook(() => useCardDrag(commands));
+
+    act(() => {
+      result.current.startDrag("card-1", { x: 0, y: 0 });
+      result.current.moveDrag("card-1", { x: 10, y: 20 });
+      result.current.startDrag("card-2", { x: 30, y: 40 });
+      result.current.moveDrag("card-2", { x: 50, y: 60 });
+    });
+    await act(async () => Promise.resolve());
+
+    expect(result.current.localPositions).toEqual({
+      "card-1": { x: 10, y: 20 },
+      "card-2": { x: 50, y: 60 },
+    });
+    expect(result.current.activeDrag).toEqual({ cardId: "card-2", position: { x: 50, y: 60 } });
   });
 
   it("stacks before releasing when dropped on a snap target", async () => {

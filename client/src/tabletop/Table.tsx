@@ -1,6 +1,6 @@
 import { Stage, Layer, Rect, Group } from "react-konva";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Card, getCardOrientationAction } from "./Card";
+import { Card } from "./Card";
 import type { CardDefinition } from "@card-table/shared";
 import { DEFAULT_VIEWPORT, screenToWorld, worldToScreen } from "./viewport";
 import { useCardCatalog } from "../features/card-browser/CardCatalogContext";
@@ -11,10 +11,10 @@ import { useInterpolatedCardPositions } from "./interactions/interpolation";
 import { getPreviewSide, MagnifyPreview } from "../features/tabletop/MagnifyPreview";
 import { useLocalUiState } from "../state/local-ui-state";
 import { Stack } from "./Stack";
-import { findStackTarget } from "./interactions/snap-detection";
+import { findStackTarget, resolveStackTarget, STACK_OFFSET } from "./interactions/snap-detection";
 import { useStackDrag } from "./interactions/stack-drag";
-import { CARD_HEIGHT, CARD_WIDTH } from "../cards/CardRenderer";
-import { STACK_OFFSET } from "./interactions/snap-detection";
+import { TableContextMenu, type CardMenuState } from "./TableContextMenu";
+import { SnapTargetOutline } from "./SnapTargetOutline";
 
 export function Table() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -26,17 +26,23 @@ export function Table() {
   const drag = useCardDrag(multiplayer);
   const stackDrag = useStackDrag(multiplayer);
   const { magnifiedCardId, magnifyCard, unmagnifyCard } = useLocalUiState();
-  const [cardMenu, setCardMenu] = useState<{ cardId: string; stackId?: string; x: number; y: number } | null>(
-    null,
-  );
+  const [cardMenu, setCardMenu] = useState<CardMenuState | null>(null);
   // The menu acts on live card state, so it closes itself if the card is
   // deleted or restacked by another player while it is open.
   const menuCard = cardMenu ? cards.find((card) => card.id === cardMenu.cardId) : undefined;
+  const menuStack = cardMenu?.stackId
+    ? stacks.find((stack) => stack.id === cardMenu.stackId)
+    : undefined;
   const cardsById = useMemo(() => new Map(cards.map((card) => [card.id, card])), [cards]);
   const snapTarget = useMemo(() => {
-    const active = Object.entries(drag.localPositions)[0];
-    return active ? findStackTarget(active[0], active[1], cards, stacks) : null;
-  }, [cards, drag.localPositions, stacks]);
+    return drag.activeDrag
+      ? findStackTarget(drag.activeDrag.cardId, drag.activeDrag.position, cards, stacks)
+      : null;
+  }, [cards, drag.activeDrag, stacks]);
+  const resolvedSnapTarget = useMemo(
+    () => resolveStackTarget(snapTarget, cards, stacks),
+    [cards, snapTarget, stacks],
+  );
 
   const magnified = useMemo(() => {
     const card = cards.find((candidate) => candidate.id === magnifiedCardId);
@@ -174,20 +180,7 @@ export function Table() {
                     />
                   );
                 })}
-              {snapTarget && (() => {
-                const target = snapTarget.kind === "card"
-                  ? cards.find((card) => card.id === snapTarget.cardId)
-                  : stacks.find((stack) => stack.id === snapTarget.stackId);
-                if (!target) return null;
-                const count = "cardIds" in target ? target.cardIds.length - 1 : 0;
-                return <Rect
-                  x={target.x + count * STACK_OFFSET - CARD_WIDTH / 2 - 4}
-                  y={target.y + count * STACK_OFFSET - CARD_HEIGHT / 2 - 4}
-                  width={CARD_WIDTH + 8} height={CARD_HEIGHT + 8}
-                  stroke="#facc15" strokeWidth={4} cornerRadius={10}
-                  listening={false}
-                />;
-              })()}
+              {resolvedSnapTarget && <SnapTargetOutline target={resolvedSnapTarget} />}
             </Group>
           </Layer>
         </Stage>
@@ -201,56 +194,13 @@ export function Table() {
       )}
       {connectionError && <p className="tabletop-error">{connectionError}</p>}
       {cardMenu && menuCard && (
-        <div
-          className="card-context-menu"
-          role="menu"
-          style={{ left: cardMenu.x, top: cardMenu.y }}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              const command = getCardOrientationAction(menuCard.orientation) === "untap"
-                ? multiplayer.untapCard
-                : multiplayer.tapCard;
-              void command(cardMenu.cardId).catch((cause: unknown) => {
-                console.warn("Card orientation change rejected:", cause);
-              });
-              setCardMenu(null);
-            }}
-          >
-            {menuCard.orientation === "tapped" ? "Untap" : "Tap"}
-          </button>
-          {cardMenu.stackId && (
-            <button type="button" role="menuitem" onClick={() => {
-              const stack = stacks.find((candidate) => candidate.id === cardMenu.stackId);
-              if (stack) void multiplayer.drawCard({
-                stackId: stack.id, x: stack.x + 60, y: stack.y + 60,
-              });
-              setCardMenu(null);
-            }}>Draw top card</button>
-          )}
-          <button
-            type="button"
-            role="menuitem"
-            className="danger"
-            onClick={() => {
-              void multiplayer.deleteCard(cardMenu.cardId).catch((cause: unknown) => {
-                console.warn("Card deletion rejected:", cause);
-              });
-              setCardMenu(null);
-            }}
-          >
-            Delete
-          </button>
-          {cardMenu.stackId && (
-            <button type="button" role="menuitem" className="danger" onClick={() => {
-              void multiplayer.deleteStack(cardMenu.stackId!);
-              setCardMenu(null);
-            }}>Delete stack</button>
-          )}
-        </div>
+        <TableContextMenu
+          menu={cardMenu}
+          card={menuCard}
+          stack={menuStack}
+          commands={multiplayer}
+          onClose={() => setCardMenu(null)}
+        />
       )}
     </div>
   );

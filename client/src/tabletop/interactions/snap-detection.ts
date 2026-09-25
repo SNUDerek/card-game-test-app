@@ -8,6 +8,24 @@ export type StackTarget =
   | { kind: "card"; cardId: string }
   | { kind: "stack"; stackId: string };
 
+export type ResolvedStackTarget =
+  | { kind: "card"; card: CardInstance }
+  | { kind: "stack"; stack: CardStack };
+
+export function resolveStackTarget(
+  target: StackTarget | null,
+  cards: readonly CardInstance[],
+  stacks: readonly CardStack[],
+): ResolvedStackTarget | null {
+  if (!target) return null;
+  if (target.kind === "card") {
+    const card = cards.find((candidate) => candidate.id === target.cardId);
+    return card ? { kind: "card", card } : null;
+  }
+  const stack = stacks.find((candidate) => candidate.id === target.stackId);
+  return stack ? { kind: "stack", stack } : null;
+}
+
 export function findStackTarget(
   sourceCardId: string,
   position: Point,
