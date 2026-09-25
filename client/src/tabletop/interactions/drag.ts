@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MoveCardPayload, TableObjectRef } from "@card-table/shared";
+import type { MoveCardPayload, StackCardPayload, TableObjectRef } from "@card-table/shared";
 import type { Point } from "../viewport";
 
 export const MOVE_INTERVAL_MS = 50;
@@ -8,6 +8,7 @@ interface DragCommands {
   claimObject(object: TableObjectRef): Promise<unknown>;
   moveCard(payload: MoveCardPayload, confirmed?: boolean): Promise<void>;
   releaseObject(object: TableObjectRef): Promise<void>;
+  stackCard(payload: StackCardPayload): Promise<void>;
 }
 
 interface DragSession {
@@ -79,7 +80,7 @@ export function useCardDrag(commands: DragCommands) {
   }, []);
 
   const endDrag = useCallback(
-    async (cardId: string, position: Point) => {
+    async (cardId: string, position: Point, target?: StackCardPayload["target"] | null) => {
       const session = sessions.current.get(cardId);
       if (!session) return;
       session.latest = position;
@@ -88,7 +89,8 @@ export function useCardDrag(commands: DragCommands) {
       if (!(await session.claimPromise)) return;
       const object = { kind: "card", id: cardId } as const;
       try {
-        await commandsRef.current.moveCard({ cardId, ...session.latest }, true);
+        if (target) await commandsRef.current.stackCard({ cardId, target });
+        else await commandsRef.current.moveCard({ cardId, ...session.latest }, true);
       } catch (cause) {
         console.warn("Final card move rejected:", cause);
         clearLocalPosition(cardId);

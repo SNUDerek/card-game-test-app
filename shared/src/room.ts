@@ -41,8 +41,17 @@ export interface CardInstance {
   zIndex: number;
 }
 
+export interface CardStack {
+  id: string;
+  x: number;
+  y: number;
+  /** Ordered bottom to top. */
+  cardIds: string[];
+  zIndex: number;
+}
+
 export interface ObjectLock {
-  objectKind: "card";
+  objectKind: "card" | "stack";
   objectId: string;
   playerId: string;
   expiresAt: number;

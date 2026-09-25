@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CardInstanceState, ObjectLockState, RoomState } from "../../rooms/state/RoomState.js";
+import { CardInstanceState, CardStackState, ObjectLockState, RoomState } from "../../rooms/state/RoomState.js";
 import { deleteCard } from "./delete-card.js";
 
 const NOW = 5_000;
@@ -65,12 +65,26 @@ describe("deleteCard", () => {
     expect(state.toJSON()).toEqual(before);
   });
 
-  it("rejects a stacked card without partial mutation", () => {
+  it("rejects a buried stacked card without partial mutation", () => {
     const state = stateWithCard({ stackId: "stack-1" });
+    state.cards.set("top", new CardInstanceState({ id: "top", definitionId: "top", face: "front", orientation: "upright", x: 0, y: 0, stackId: "stack-1", zIndex: 0 }));
+    state.stacks.set("stack-1", new CardStackState({ id: "stack-1", x: 0, y: 0, cardIds: ["card-1", "top"], zIndex: 0 }));
     const before = state.toJSON();
 
     expect(() => deleteCard(state, "player-1", "card-1", NOW)).toThrow("stack");
     expect(state.toJSON()).toEqual(before);
+  });
+
+  it("deletes the exposed top card and collapses the remaining card", () => {
+    const state = stateWithCard({ stackId: "stack-1" });
+    state.cards.set("bottom", new CardInstanceState({ id: "bottom", definitionId: "bottom", face: "front", orientation: "upright", x: 0, y: 0, stackId: "stack-1", zIndex: 0 }));
+    state.stacks.set("stack-1", new CardStackState({ id: "stack-1", x: 40, y: 50, cardIds: ["bottom", "card-1"], zIndex: 6 }));
+
+    deleteCard(state, "player-1", "card-1", NOW);
+
+    expect(state.cards.has("card-1")).toBe(false);
+    expect(state.stacks.size).toBe(0);
+    expect(state.cards.get("bottom")).toMatchObject({ stackId: undefined, x: 40, y: 50, zIndex: 6 });
   });
 
   it("rejects a card another player is holding, without mutation", () => {

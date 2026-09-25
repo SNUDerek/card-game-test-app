@@ -27,9 +27,21 @@ export const CardInstanceState = schema(
 );
 export type CardInstanceState = SchemaType<typeof CardInstanceState>;
 
+export const CardStackState = schema(
+  {
+    id: t.string(),
+    x: t.number(),
+    y: t.number(),
+    cardIds: t.array("string"),
+    zIndex: t.number(),
+  },
+  "CardStack",
+);
+export type CardStackState = SchemaType<typeof CardStackState>;
+
 export const ObjectLockState = schema(
   {
-    objectKind: t.string<"card">(),
+    objectKind: t.string<"card" | "stack">(),
     objectId: t.string(),
     playerId: t.string(),
     expiresAt: t.number(),
@@ -41,6 +53,7 @@ export type ObjectLockState = SchemaType<typeof ObjectLockState>;
 export const RoomState = schema(
   {
     cards: t.map(CardInstanceState),
+    stacks: t.map(CardStackState),
     players: t.map(PlayerState),
     locks: t.map(ObjectLockState),
     /**

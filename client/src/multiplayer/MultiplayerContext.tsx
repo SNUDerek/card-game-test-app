@@ -9,15 +9,19 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  type CardInstance,
-  type ClaimObjectResult,
-  type MoveCardPayload,
-  type Player,
-  type PlayerId,
-  type RoomId,
-  type SpawnCardPayload,
-  type TableObjectRef,
+import type {
+  CardInstance,
+  CardStack,
+  ClaimObjectResult,
+  SpawnCardPayload,
+  MoveCardPayload,
+  TableObjectRef,
+  StackCardPayload,
+  MoveStackPayload,
+  DrawCardPayload,
+  Player,
+  PlayerId,
+  RoomId,
 } from "@card-table/shared";
 import {
   claimObject as sendClaimObject,
@@ -30,6 +34,10 @@ import {
   bringToFront as sendBringToFront,
   deleteCard as sendDeleteCard,
   requestSession,
+  stackCard as sendStackCard,
+  moveStack as sendMoveStack,
+  drawCard as sendDrawCard,
+  deleteStack as sendDeleteStack,
 } from "./commands";
 import {
   clearStoredSession,
@@ -42,6 +50,7 @@ import {
 
 interface ClientRoomState {
   cards: Map<string, CardInstance>;
+  stacks: Map<string, CardStack>;
   players: Map<string, Player>;
   hostPlayerId: PlayerId;
 }
@@ -66,6 +75,7 @@ interface MultiplayerValue {
   hostPlayerId: PlayerId;
   players: Player[];
   cards: CardInstance[];
+  stacks: CardStack[];
   connectionError: string | null;
   createRoom(request: CreateRoomRequest): Promise<void>;
   joinRoom(request: JoinRoomRequest): Promise<void>;
@@ -79,6 +89,10 @@ interface MultiplayerValue {
   untapCard(cardId: string): Promise<void>;
   bringToFront(cardId: string): Promise<void>;
   deleteCard(cardId: string): Promise<void>;
+  stackCard(payload: StackCardPayload): Promise<void>;
+  moveStack(payload: MoveStackPayload, confirmed?: boolean): Promise<void>;
+  drawCard(payload: DrawCardPayload): Promise<void>;
+  deleteStack(stackId: string): Promise<void>;
 }
 
 const MultiplayerContext = createContext<MultiplayerValue | null>(null);
@@ -101,6 +115,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
   const [hostPlayerId, setHostPlayerId] = useState<PlayerId>("");
   const [players, setPlayers] = useState<Player[]>([]);
   const [cards, setCards] = useState<CardInstance[]>([]);
+  const [stacks, setStacks] = useState<CardStack[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const resetSession = useCallback(() => {
@@ -111,6 +126,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     setHostPlayerId("");
     setPlayers([]);
     setCards([]);
+    setStacks([]);
   }, []);
 
   const attachRoom = useCallback(
@@ -128,6 +144,15 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
             y: card.y,
             stackId: card.stackId,
             zIndex: card.zIndex,
+          })),
+        );
+        setStacks(
+          [...state.stacks.values()].map((stack) => ({
+            id: stack.id,
+            x: stack.x,
+            y: stack.y,
+            cardIds: [...stack.cardIds],
+            zIndex: stack.zIndex,
           })),
         );
         setPlayers(
@@ -214,6 +239,10 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     if (room) await room.leave();
   }, [resetSession]);
 
+  // Do not call room.leave() from an unmount cleanup. A reload must close the
+  // transport without consent so the server reserves this player's seat and
+  // the stored reconnection token remains usable.
+
   // A reload lands back on /room/<id> with the seat still reserved during the
   // server's grace period, so resume it before showing the lobby.
   useEffect(() => {
@@ -242,13 +271,6 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     };
   }, [attachRoom, client]);
 
-  useEffect(
-    () => () => {
-      void roomRef.current?.leave();
-    },
-    [],
-  );
-
   const withRoom = useCallback(<T,>(send: (room: Room<any, ClientRoomState>) => Promise<T>) => {
     const room = roomRef.current;
     if (!room) return Promise.reject(new Error("The tabletop is not connected yet."));
@@ -264,6 +286,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       hostPlayerId,
       players,
       cards,
+      stacks,
       connectionError,
       createRoom,
       joinRoom,
@@ -282,6 +305,14 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
         withRoom(async (room) => void (await sendBringToFront(room, { cardId }))),
       deleteCard: (cardId) =>
         withRoom(async (room) => void (await sendDeleteCard(room, { cardId }))),
+      stackCard: (payload) =>
+        withRoom(async (room) => void (await sendStackCard(room, payload))),
+      moveStack: (payload, confirmed = false) =>
+        withRoom(async (room) => void (await sendMoveStack(room, payload, confirmed))),
+      drawCard: (payload) =>
+        withRoom(async (room) => void (await sendDrawCard(room, payload))),
+      deleteStack: (stackId) =>
+        withRoom(async (room) => void (await sendDeleteStack(room, { stackId }))),
     }),
     [
       status,
@@ -291,6 +322,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       hostPlayerId,
       players,
       cards,
+      stacks,
       connectionError,
       createRoom,
       joinRoom,

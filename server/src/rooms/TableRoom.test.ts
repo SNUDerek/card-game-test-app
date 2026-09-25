@@ -327,4 +327,70 @@ describe("TableRoom connection lifecycle", () => {
     ).rejects.toThrow("Unknown card");
     expect(room.state.cards.size).toBe(0);
   });
+
+  it("creates and synchronizes a stack from two matching standalone cards", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const source = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+      definitionId: "spell-1", x: 10, y: 20,
+    });
+    const target = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+      definitionId: "spell-1", x: 100, y: 200,
+    });
+    await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, {
+      object: { kind: "card", id: source.cardId },
+    });
+
+    const result = await alice.request(TABLE_COMMANDS.STACK_CARD, {
+      cardId: source.cardId,
+      target: { kind: "card", cardId: target.cardId },
+    });
+    await room.waitForNextPatch();
+
+    expect([...room.state.stacks.get(result.stackId)!.cardIds]).toEqual([
+      target.cardId, source.cardId,
+    ]);
+    expect(alice.state.toJSON()).toEqual(room.state.toJSON());
+    expect(bob.state.toJSON()).toEqual(room.state.toJSON());
+  });
+
+  it("moves, draws, manipulates, and deletes stacks authoritatively", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const spawned = [];
+    for (let index = 0; index < 3; index += 1) {
+      spawned.push(await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+        definitionId: "spell-1", x: index * 20, y: 0,
+      }));
+    }
+    await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, { object: { kind: "card", id: spawned[1].cardId } });
+    const created = await alice.request(TABLE_COMMANDS.STACK_CARD, {
+      cardId: spawned[1].cardId, target: { kind: "card", cardId: spawned[0].cardId },
+    });
+    await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, { object: { kind: "card", id: spawned[2].cardId } });
+    await alice.request(TABLE_COMMANDS.STACK_CARD, {
+      cardId: spawned[2].cardId, target: { kind: "stack", stackId: created.stackId },
+    });
+
+    await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, { object: { kind: "stack", id: created.stackId } });
+    await alice.request(TABLE_COMMANDS.MOVE_STACK, { stackId: created.stackId, x: 100, y: 120 });
+    const drawn = await alice.request(TABLE_COMMANDS.DRAW_CARD, { stackId: created.stackId, x: 200, y: 220 });
+    expect(drawn.cardId).toBe(spawned[2].cardId);
+    expect(await alice.request(TABLE_COMMANDS.FLIP_CARD, { cardId: spawned[1].cardId })).toEqual({ face: "back" });
+    await alice.request(TABLE_COMMANDS.DELETE_CARD, { cardId: spawned[1].cardId });
+
+    expect(room.state.stacks.size).toBe(0);
+    expect(room.state.cards.get(spawned[0].cardId)).toMatchObject({ stackId: undefined, x: 100, y: 120 });
+    expect(room.state.cards.get(spawned[2].cardId)).toMatchObject({ x: 200, y: 220 });
+
+    await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, { object: { kind: "card", id: spawned[2].cardId } });
+    const recreated = await alice.request(TABLE_COMMANDS.STACK_CARD, {
+      cardId: spawned[2].cardId, target: { kind: "card", cardId: spawned[0].cardId },
+    });
+    await alice.request(TABLE_COMMANDS.DELETE_STACK, { stackId: recreated.stackId });
+    await room.waitForNextPatch();
+    expect(room.state.cards.size).toBe(0);
+    expect(room.state.stacks.size).toBe(0);
+  });
 });

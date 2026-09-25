@@ -7,6 +7,10 @@ import {
   MoveCardPayloadSchema,
   CardIdPayloadSchema,
   SpawnCardPayloadSchema,
+  StackCardPayloadSchema,
+  MoveStackPayloadSchema,
+  DrawCardPayloadSchema,
+  StackIdPayloadSchema,
   TABLE_COMMANDS,
   ROOM_COMMANDS,
   type JoinRoomOptions,
@@ -30,6 +34,11 @@ import { bringToFront } from "../commands/card/bring-to-front.js";
 import { deleteCard } from "../commands/card/delete-card.js";
 import { assignHostIfVacant, migrateHostIfNeeded } from "./host.js";
 import { hashRoomPassword, verifyRoomPassword, type RoomPasswordHash } from "./room-access.js";
+import { stackCard } from "../commands/stack/stack-card.js";
+import { moveStack } from "../commands/stack/move-stack.js";
+import { drawTopCard } from "../commands/stack/draw-top-card.js";
+import { deleteStack } from "../commands/stack/delete-stack.js";
+import { bringStackToFrontIfNeeded } from "../commands/stack/stack-helpers.js";
 
 export interface TableRoomOptions {
   cardDefinitionIds?: string[];
@@ -105,6 +114,8 @@ export class TableRoom extends Room<{ state: RoomState }> {
         );
         if (parsed.data.object.kind === "card") {
           bringToFront(this.state, parsed.data.object.id);
+        } else {
+          bringStackToFrontIfNeeded(this.state, parsed.data.object.id);
         }
         return { expiresAt: lock.expiresAt };
       } catch (error) {
@@ -188,6 +199,56 @@ export class TableRoom extends Room<{ state: RoomState }> {
 
       try {
         deleteCard(this.state, playerId, parsed.data.cardId, Date.now());
+        return { deleted: true as const };
+      } catch (error) {
+        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
+        throw error;
+      }
+    });
+    this.onMessage(TABLE_COMMANDS.STACK_CARD, (client, rawPayload) => {
+      const parsed = StackCardPayloadSchema.safeParse(rawPayload);
+      if (!parsed.success) throw new ServerError(400, "Invalid STACK_CARD payload.");
+      const playerId = this.playerIdBySessionId.get(client.sessionId);
+      if (!playerId) throw new ServerError(403, "Player is not joined.");
+      try {
+        return { stackId: stackCard(this.state, playerId, parsed.data, Date.now()) };
+      } catch (error) {
+        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
+        throw error;
+      }
+    });
+    this.onMessage(TABLE_COMMANDS.MOVE_STACK, (client, rawPayload) => {
+      const parsed = MoveStackPayloadSchema.safeParse(rawPayload);
+      if (!parsed.success) throw new ServerError(400, "Invalid MOVE_STACK payload.");
+      const playerId = this.playerIdBySessionId.get(client.sessionId);
+      if (!playerId) throw new ServerError(403, "Player is not joined.");
+      try {
+        moveStack(this.state, playerId, parsed.data, Date.now(), this.lockTimeoutMs);
+        return { moved: true as const };
+      } catch (error) {
+        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
+        throw error;
+      }
+    });
+    this.onMessage(TABLE_COMMANDS.DRAW_CARD, (client, rawPayload) => {
+      const parsed = DrawCardPayloadSchema.safeParse(rawPayload);
+      if (!parsed.success) throw new ServerError(400, "Invalid DRAW_CARD payload.");
+      const playerId = this.playerIdBySessionId.get(client.sessionId);
+      if (!playerId) throw new ServerError(403, "Player is not joined.");
+      try {
+        return { cardId: drawTopCard(this.state, playerId, parsed.data, Date.now()).id };
+      } catch (error) {
+        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
+        throw error;
+      }
+    });
+    this.onMessage(TABLE_COMMANDS.DELETE_STACK, (client, rawPayload) => {
+      const parsed = StackIdPayloadSchema.safeParse(rawPayload);
+      if (!parsed.success) throw new ServerError(400, "Invalid DELETE_STACK payload.");
+      const playerId = this.playerIdBySessionId.get(client.sessionId);
+      if (!playerId) throw new ServerError(403, "Player is not joined.");
+      try {
+        deleteStack(this.state, playerId, parsed.data.stackId, Date.now());
         return { deleted: true as const };
       } catch (error) {
         if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
