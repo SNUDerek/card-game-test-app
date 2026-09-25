@@ -28,6 +28,12 @@ export function useRoomSync(): RoomSync {
 
   const syncRoom = useCallback((room: TableRoom) => {
     const syncState = (state: ClientRoomState) => {
+      // Right after connecting, `room.state` exists but its map fields are not
+      // hydrated yet: the server sends the schema reflection in the join
+      // handshake, then the actual entity data in a separate, later message.
+      // Skip this call and wait for the onStateChange it triggers.
+      if (!state.cards || !state.stacks || !state.players) return;
+
       setCards(
         [...state.cards.values()].map((card) => ({
           id: card.id,
