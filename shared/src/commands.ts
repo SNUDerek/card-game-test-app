@@ -5,6 +5,10 @@ export const TABLE_COMMANDS = {
   CLAIM_OBJECT: "CLAIM_OBJECT",
   RELEASE_OBJECT: "RELEASE_OBJECT",
   MOVE_CARD: "MOVE_CARD",
+  FLIP_CARD: "FLIP_CARD",
+  TAP_CARD: "TAP_CARD",
+  UNTAP_CARD: "UNTAP_CARD",
+  BRING_TO_FRONT: "BRING_TO_FRONT",
 } as const;
 
 export const PositionSchema = z.object({
@@ -50,6 +54,21 @@ export type MoveCardPayload = z.infer<typeof MoveCardPayloadSchema>;
 
 export interface MoveCardResult {
   moved: true;
+}
+
+export const CardIdPayloadSchema = z.object({ cardId: z.string().min(1) });
+export type CardIdPayload = z.infer<typeof CardIdPayloadSchema>;
+
+export interface FlipCardResult {
+  face: "front" | "back";
+}
+
+export interface SetCardOrientationResult {
+  orientation: "upright" | "tapped";
+}
+
+export interface BringToFrontResult {
+  zIndex: number;
 }
 
 export function objectLockKey(object: TableObjectRef): string {

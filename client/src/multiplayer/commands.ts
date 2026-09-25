@@ -8,6 +8,10 @@ import {
   type MoveCardResult,
   type SpawnCardPayload,
   type SpawnCardResult,
+  type CardIdPayload,
+  type FlipCardResult,
+  type SetCardOrientationResult,
+  type BringToFrontResult,
 } from "@card-table/shared";
 import type { Room } from "@colyseus/sdk";
 
@@ -37,4 +41,29 @@ export function releaseObject(
   payload: ReleaseObjectPayload,
 ): Promise<ReleaseObjectResult> {
   return room.request(TABLE_COMMANDS.RELEASE_OBJECT, payload);
+}
+
+export function flipCard(room: Room, payload: CardIdPayload): Promise<FlipCardResult> {
+  return room.request(TABLE_COMMANDS.FLIP_CARD, payload);
+}
+
+export function tapCard(
+  room: Room,
+  payload: CardIdPayload,
+): Promise<SetCardOrientationResult> {
+  return room.request(TABLE_COMMANDS.TAP_CARD, payload);
+}
+
+export function untapCard(
+  room: Room,
+  payload: CardIdPayload,
+): Promise<SetCardOrientationResult> {
+  return room.request(TABLE_COMMANDS.UNTAP_CARD, payload);
+}
+
+export function bringToFront(
+  room: Room,
+  payload: CardIdPayload,
+): Promise<BringToFrontResult> {
+  return room.request(TABLE_COMMANDS.BRING_TO_FRONT, payload);
 }
