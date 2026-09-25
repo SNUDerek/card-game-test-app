@@ -14,6 +14,7 @@ export const TABLE_COMMANDS = {
   STACK_CARD: "STACK_CARD",
   MOVE_STACK: "MOVE_STACK",
   DRAW_CARD: "DRAW_CARD",
+  SHUFFLE_STACK: "SHUFFLE_STACK",
   DELETE_STACK: "DELETE_STACK",
 } as const;
 
@@ -122,6 +123,12 @@ export interface DrawCardResult { cardId: string }
 export const StackIdPayloadSchema = z.object({ stackId: z.string().min(1) });
 export type StackIdPayload = z.infer<typeof StackIdPayloadSchema>;
 export interface DeleteStackResult { deleted: true }
+
+/**
+ * The shuffled order is chosen by the server. Clients never supply a
+ * permutation or a seed, so a client cannot predict or dictate the result.
+ */
+export interface ShuffleStackResult { shuffled: true }
 
 export function objectLockKey(object: TableObjectRef): string {
   return `${object.kind}:${object.id}`;

@@ -12,6 +12,7 @@ interface TableContextMenuCommands {
   tapCard(cardId: string): Promise<void>;
   untapCard(cardId: string): Promise<void>;
   drawCard(payload: DrawCardPayload): Promise<void>;
+  shuffleStack(stackId: string): Promise<void>;
   deleteCard(cardId: string): Promise<void>;
   deleteStack(stackId: string): Promise<void>;
 }
@@ -66,6 +67,15 @@ export function TableContextMenu({ menu, card, stack, commands, onClose }: Table
           }))}
         >
           Draw top card
+        </button>
+      )}
+      {stack && (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => run("Stack shuffle", commands.shuffleStack(stack.id))}
+        >
+          Shuffle
         </button>
       )}
       <button
