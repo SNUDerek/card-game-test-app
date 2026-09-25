@@ -1,4 +1,4 @@
-import { Client, type Room } from "@colyseus/sdk";
+import { Client } from "@colyseus/sdk";
 import {
   createContext,
   useCallback,
@@ -12,33 +12,14 @@ import {
 import type {
   CardInstance,
   CardStack,
-  ClaimObjectResult,
-  SpawnCardPayload,
-  MoveCardPayload,
-  TableObjectRef,
-  StackCardPayload,
-  MoveStackPayload,
-  DrawCardPayload,
   Player,
   PlayerId,
   RoomId,
 } from "@card-table/shared";
-import {
-  claimObject as sendClaimObject,
-  releaseObject as sendReleaseObject,
-  moveCard as sendMoveCard,
-  spawnCard as sendSpawnCard,
-  flipCard as sendFlipCard,
-  tapCard as sendTapCard,
-  untapCard as sendUntapCard,
-  bringToFront as sendBringToFront,
-  deleteCard as sendDeleteCard,
-  requestSession,
-  stackCard as sendStackCard,
-  moveStack as sendMoveStack,
-  drawCard as sendDrawCard,
-  deleteStack as sendDeleteStack,
-} from "./commands";
+import { requestSession } from "./commands";
+import type { ClientRoomState, TableRoom } from "./room";
+import { useRoomSync } from "./useRoomSync";
+import { useTableCommands, type TableCommands } from "./useTableCommands";
 import {
   clearStoredSession,
   describeConnectionError,
@@ -47,13 +28,6 @@ import {
   roomPath,
   storeSession,
 } from "./session";
-
-interface ClientRoomState {
-  cards: Map<string, CardInstance>;
-  stacks: Map<string, CardStack>;
-  players: Map<string, Player>;
-  hostPlayerId: PlayerId;
-}
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 
@@ -66,7 +40,7 @@ export interface JoinRoomRequest extends CreateRoomRequest {
   roomId: RoomId;
 }
 
-interface MultiplayerValue {
+interface MultiplayerValue extends TableCommands {
   status: ConnectionStatus;
   roomId: RoomId | null;
   /** Room id from the shared URL, present before this client has joined. */
@@ -80,19 +54,6 @@ interface MultiplayerValue {
   createRoom(request: CreateRoomRequest): Promise<void>;
   joinRoom(request: JoinRoomRequest): Promise<void>;
   leaveRoom(): Promise<void>;
-  spawnCard(payload: SpawnCardPayload): Promise<void>;
-  claimObject(object: TableObjectRef): Promise<ClaimObjectResult>;
-  releaseObject(object: TableObjectRef): Promise<void>;
-  moveCard(payload: MoveCardPayload, confirmed?: boolean): Promise<void>;
-  flipCard(cardId: string): Promise<void>;
-  tapCard(cardId: string): Promise<void>;
-  untapCard(cardId: string): Promise<void>;
-  bringToFront(cardId: string): Promise<void>;
-  deleteCard(cardId: string): Promise<void>;
-  stackCard(payload: StackCardPayload): Promise<void>;
-  moveStack(payload: MoveStackPayload, confirmed?: boolean): Promise<void>;
-  drawCard(payload: DrawCardPayload): Promise<void>;
-  deleteStack(stackId: string): Promise<void>;
 }
 
 const MultiplayerContext = createContext<MultiplayerValue | null>(null);
@@ -105,71 +66,30 @@ function serverEndpoint(): string {
 
 export function MultiplayerProvider({ children }: { children: ReactNode }) {
   const client = useMemo(() => new Client(serverEndpoint()), []);
-  const roomRef = useRef<Room<any, ClientRoomState> | null>(null);
+  const roomRef = useRef<TableRoom | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [roomId, setRoomId] = useState<RoomId | null>(null);
   const [invitedRoomId, setInvitedRoomId] = useState<RoomId | null>(() =>
     parseRoomIdFromPath(window.location.pathname),
   );
   const [selfPlayerId, setSelfPlayerId] = useState<PlayerId | null>(null);
-  const [hostPlayerId, setHostPlayerId] = useState<PlayerId>("");
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [cards, setCards] = useState<CardInstance[]>([]);
-  const [stacks, setStacks] = useState<CardStack[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const { players, cards, stacks, hostPlayerId, syncRoom, resetSync } = useRoomSync();
+  const commands = useTableCommands(roomRef);
 
   const resetSession = useCallback(() => {
     roomRef.current = null;
     setStatus("disconnected");
     setRoomId(null);
     setSelfPlayerId(null);
-    setHostPlayerId("");
-    setPlayers([]);
-    setCards([]);
-    setStacks([]);
-  }, []);
+    resetSync();
+  }, [resetSync]);
 
   const attachRoom = useCallback(
-    (room: Room<any, ClientRoomState>) => {
+    (room: TableRoom) => {
       roomRef.current = room;
 
-      const syncState = (state: ClientRoomState) => {
-        setCards(
-          [...state.cards.values()].map((card) => ({
-            id: card.id,
-            definitionId: card.definitionId,
-            face: card.face,
-            orientation: card.orientation,
-            x: card.x,
-            y: card.y,
-            stackId: card.stackId,
-            zIndex: card.zIndex,
-          })),
-        );
-        setStacks(
-          [...state.stacks.values()].map((stack) => ({
-            id: stack.id,
-            x: stack.x,
-            y: stack.y,
-            cardIds: [...stack.cardIds],
-            zIndex: stack.zIndex,
-          })),
-        );
-        setPlayers(
-          [...state.players.values()]
-            .map((player) => ({
-              id: player.id,
-              displayName: player.displayName,
-              connected: player.connected,
-              joinOrder: player.joinOrder,
-            }))
-            .sort((a, b) => a.joinOrder - b.joinOrder),
-        );
-        setHostPlayerId(state.hostPlayerId);
-      };
-
-      syncState(room.state);
-      room.onStateChange(syncState);
+      syncRoom(room);
       room.onLeave(() => {
         if (roomRef.current !== room) return;
         // The seat is gone for good by now: the SDK retries transient drops on
@@ -195,11 +115,11 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       storeSession({ roomId: room.roomId, reconnectionToken: room.reconnectionToken });
       window.history.pushState({}, "", roomPath(room.roomId));
     },
-    [resetSession],
+    [resetSession, syncRoom],
   );
 
   const connect = useCallback(
-    async (open: () => Promise<Room<any, ClientRoomState>>) => {
+    async (open: () => Promise<TableRoom>) => {
       setStatus("connecting");
       setConnectionError(null);
       try {
@@ -271,14 +191,9 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     };
   }, [attachRoom, client]);
 
-  const withRoom = useCallback(<T,>(send: (room: Room<any, ClientRoomState>) => Promise<T>) => {
-    const room = roomRef.current;
-    if (!room) return Promise.reject(new Error("The tabletop is not connected yet."));
-    return send(room);
-  }, []);
-
   const value = useMemo<MultiplayerValue>(
     () => ({
+      ...commands,
       status,
       roomId,
       invitedRoomId,
@@ -291,30 +206,9 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       createRoom,
       joinRoom,
       leaveRoom,
-      spawnCard: (payload) => withRoom(async (room) => void (await sendSpawnCard(room, payload))),
-      claimObject: (object) => withRoom((room) => sendClaimObject(room, { object })),
-      releaseObject: (object) =>
-        withRoom(async (room) => void (await sendReleaseObject(room, { object }))),
-      moveCard: (payload, confirmed = false) =>
-        withRoom(async (room) => void (await sendMoveCard(room, payload, confirmed))),
-      flipCard: (cardId) => withRoom(async (room) => void (await sendFlipCard(room, { cardId }))),
-      tapCard: (cardId) => withRoom(async (room) => void (await sendTapCard(room, { cardId }))),
-      untapCard: (cardId) =>
-        withRoom(async (room) => void (await sendUntapCard(room, { cardId }))),
-      bringToFront: (cardId) =>
-        withRoom(async (room) => void (await sendBringToFront(room, { cardId }))),
-      deleteCard: (cardId) =>
-        withRoom(async (room) => void (await sendDeleteCard(room, { cardId }))),
-      stackCard: (payload) =>
-        withRoom(async (room) => void (await sendStackCard(room, payload))),
-      moveStack: (payload, confirmed = false) =>
-        withRoom(async (room) => void (await sendMoveStack(room, payload, confirmed))),
-      drawCard: (payload) =>
-        withRoom(async (room) => void (await sendDrawCard(room, payload))),
-      deleteStack: (stackId) =>
-        withRoom(async (room) => void (await sendDeleteStack(room, { stackId }))),
     }),
     [
+      commands,
       status,
       roomId,
       invitedRoomId,
@@ -327,7 +221,6 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       createRoom,
       joinRoom,
       leaveRoom,
-      withRoom,
     ],
   );
 
