@@ -39,6 +39,8 @@ import {
   drawCard as sendDrawCard,
   deleteStack as sendDeleteStack,
 } from "./commands";
+import type { ClientRoomState, TableRoom } from "./room";
+import { useRoomSync } from "./useRoomSync";
 import {
   clearStoredSession,
   describeConnectionError,
@@ -47,13 +49,6 @@ import {
   roomPath,
   storeSession,
 } from "./session";
-
-interface ClientRoomState {
-  cards: Map<string, CardInstance>;
-  stacks: Map<string, CardStack>;
-  players: Map<string, Player>;
-  hostPlayerId: PlayerId;
-}
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 
@@ -105,71 +100,29 @@ function serverEndpoint(): string {
 
 export function MultiplayerProvider({ children }: { children: ReactNode }) {
   const client = useMemo(() => new Client(serverEndpoint()), []);
-  const roomRef = useRef<Room<any, ClientRoomState> | null>(null);
+  const roomRef = useRef<TableRoom | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [roomId, setRoomId] = useState<RoomId | null>(null);
   const [invitedRoomId, setInvitedRoomId] = useState<RoomId | null>(() =>
     parseRoomIdFromPath(window.location.pathname),
   );
   const [selfPlayerId, setSelfPlayerId] = useState<PlayerId | null>(null);
-  const [hostPlayerId, setHostPlayerId] = useState<PlayerId>("");
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [cards, setCards] = useState<CardInstance[]>([]);
-  const [stacks, setStacks] = useState<CardStack[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const { players, cards, stacks, hostPlayerId, syncRoom, resetSync } = useRoomSync();
 
   const resetSession = useCallback(() => {
     roomRef.current = null;
     setStatus("disconnected");
     setRoomId(null);
     setSelfPlayerId(null);
-    setHostPlayerId("");
-    setPlayers([]);
-    setCards([]);
-    setStacks([]);
-  }, []);
+    resetSync();
+  }, [resetSync]);
 
   const attachRoom = useCallback(
-    (room: Room<any, ClientRoomState>) => {
+    (room: TableRoom) => {
       roomRef.current = room;
 
-      const syncState = (state: ClientRoomState) => {
-        setCards(
-          [...state.cards.values()].map((card) => ({
-            id: card.id,
-            definitionId: card.definitionId,
-            face: card.face,
-            orientation: card.orientation,
-            x: card.x,
-            y: card.y,
-            stackId: card.stackId,
-            zIndex: card.zIndex,
-          })),
-        );
-        setStacks(
-          [...state.stacks.values()].map((stack) => ({
-            id: stack.id,
-            x: stack.x,
-            y: stack.y,
-            cardIds: [...stack.cardIds],
-            zIndex: stack.zIndex,
-          })),
-        );
-        setPlayers(
-          [...state.players.values()]
-            .map((player) => ({
-              id: player.id,
-              displayName: player.displayName,
-              connected: player.connected,
-              joinOrder: player.joinOrder,
-            }))
-            .sort((a, b) => a.joinOrder - b.joinOrder),
-        );
-        setHostPlayerId(state.hostPlayerId);
-      };
-
-      syncState(room.state);
-      room.onStateChange(syncState);
+      syncRoom(room);
       room.onLeave(() => {
         if (roomRef.current !== room) return;
         // The seat is gone for good by now: the SDK retries transient drops on
@@ -195,11 +148,11 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       storeSession({ roomId: room.roomId, reconnectionToken: room.reconnectionToken });
       window.history.pushState({}, "", roomPath(room.roomId));
     },
-    [resetSession],
+    [resetSession, syncRoom],
   );
 
   const connect = useCallback(
-    async (open: () => Promise<Room<any, ClientRoomState>>) => {
+    async (open: () => Promise<TableRoom>) => {
       setStatus("connecting");
       setConnectionError(null);
       try {
