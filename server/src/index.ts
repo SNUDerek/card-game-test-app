@@ -9,6 +9,7 @@ import {
   loadCardCatalog,
   type CardCatalog,
 } from "./cards/load-card-catalog.js";
+import { registerCardRoutes } from "./http/routes.js";
 import { TableRoom } from "./rooms/TableRoom.js";
 
 let cardCatalog: CardCatalog;
@@ -32,6 +33,7 @@ const server = defineServer({
     app.get("/health", (_req, res) => {
       res.json({ ok: true, protocolVersion: PROTOCOL_VERSION });
     });
+    registerCardRoutes(app, cardCatalog);
     app.use("/cards", express.static(CARDS_DIR));
   },
 });
