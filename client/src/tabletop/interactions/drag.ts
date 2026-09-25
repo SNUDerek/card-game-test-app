@@ -24,6 +24,7 @@ export function shouldSendMove(lastSentAt: number, now: number): boolean {
 
 export function useCardDrag(commands: DragCommands) {
   const [localPositions, setLocalPositions] = useState<Record<string, Point>>({});
+  const [activeDrag, setActiveDrag] = useState<{ cardId: string; position: Point } | null>(null);
   const sessions = useRef(new Map<string, DragSession>());
   const commandsRef = useRef(commands);
   commandsRef.current = commands;
@@ -39,6 +40,7 @@ export function useCardDrag(commands: DragCommands) {
 
   const startDrag = useCallback(
     (cardId: string, position: Point) => {
+      setActiveDrag({ cardId, position });
       const object = { kind: "card", id: cardId } as const;
       const session: DragSession = {
         claimed: false,
@@ -57,6 +59,7 @@ export function useCardDrag(commands: DragCommands) {
           console.warn("Card claim rejected:", cause);
           sessions.current.delete(cardId);
           clearLocalPosition(cardId);
+          setActiveDrag((current) => current?.cardId === cardId ? null : current);
           return false;
         });
       sessions.current.set(cardId, session);
@@ -69,6 +72,7 @@ export function useCardDrag(commands: DragCommands) {
     if (!session) return;
     session.latest = position;
     setLocalPositions((current) => ({ ...current, [cardId]: position }));
+    setActiveDrag((current) => current?.cardId === cardId ? { cardId, position } : current);
 
     const now = performance.now();
     if (session.claimed && shouldSendMove(session.lastSentAt, now)) {
@@ -96,6 +100,7 @@ export function useCardDrag(commands: DragCommands) {
         clearLocalPosition(cardId);
       } finally {
         sessions.current.delete(cardId);
+        setActiveDrag((current) => current?.cardId === cardId ? null : current);
         await commandsRef.current.releaseObject(object).catch((cause: unknown) => {
           console.warn("Card lock release failed:", cause);
         });
@@ -120,5 +125,5 @@ export function useCardDrag(commands: DragCommands) {
     [],
   );
 
-  return { localPositions, startDrag, moveDrag, endDrag, clearLocalPosition };
+  return { activeDrag, localPositions, startDrag, moveDrag, endDrag, clearLocalPosition };
 }

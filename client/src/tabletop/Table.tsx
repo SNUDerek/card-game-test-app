@@ -36,9 +36,10 @@ export function Table() {
     : undefined;
   const cardsById = useMemo(() => new Map(cards.map((card) => [card.id, card])), [cards]);
   const snapTarget = useMemo(() => {
-    const active = Object.entries(drag.localPositions)[0];
-    return active ? findStackTarget(active[0], active[1], cards, stacks) : null;
-  }, [cards, drag.localPositions, stacks]);
+    return drag.activeDrag
+      ? findStackTarget(drag.activeDrag.cardId, drag.activeDrag.position, cards, stacks)
+      : null;
+  }, [cards, drag.activeDrag, stacks]);
 
   const magnified = useMemo(() => {
     const card = cards.find((candidate) => candidate.id === magnifiedCardId);
