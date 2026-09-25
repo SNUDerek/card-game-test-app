@@ -14,8 +14,8 @@ export const CARD_HEIGHT = 280;
 export const ART_HEIGHT = 140;
 const ART_SIZE = ART_HEIGHT;
 const ART_X = (CARD_WIDTH - ART_SIZE) / 2;
-const BODY_WIDTH = CARD_WIDTH - 20;
-const BODY_HEIGHT = CARD_HEIGHT - ART_HEIGHT - 65;
+export const BODY_WIDTH = CARD_WIDTH - 20;
+export const BODY_HEIGHT = CARD_HEIGHT - ART_HEIGHT - 65;
 
 export function CardRenderer({ definition, face }: CardRendererProps) {
   const [image] = useImage(definition.imageUrl);
