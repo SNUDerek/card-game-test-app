@@ -5,21 +5,21 @@ import type { CardDefinition } from "@card-table/shared";
 
 // Mock definitions per Unit 5 specs (No server data yet)
 const mockCardDef: CardDefinition = {
-  id: "fireball",
-  name: "Fireball",
-  type: "Spell",
+  id: "phoenix",
+  name: "Phoenix",
+  type: "Creature",
   body: "Deal 3 damage to any target. This card cannot be countered by normal means.",
-  imageUrl: "/cards/fireball.jpg",
-  sourceName: "fireball.json"
+  imageUrl: "/cards/phoenix.png",
+  sourceName: "phoenix",
 };
 
 const mockCardDefLongText: CardDefinition = {
-  id: "ancient-dragon",
-  name: "Ancient Dragon",
+  id: "necromancer",
+  name: "Necromancer",
   type: "Creature",
-  body: "Flying, Trample. When Ancient Dragon enters the battlefield, you may destroy target artifact or enchantment. If you do, draw a card. This creature gets +1/+1 for each other dragon you control on the battlefield.",
-  imageUrl: "/cards/dragon.jpg",
-  sourceName: "dragon.json"
+  body: "Flying, Trample. When this creature enters the battlefield, you may destroy target artifact or enchantment. If you do, draw a card. This creature gets +1/+1 for each other undead you control on the battlefield.",
+  imageUrl: "/cards/necromancer.png",
+  sourceName: "necromancer",
 };
 
 export function Table() {
@@ -52,7 +52,7 @@ export function Table() {
         />
 
         {/* World Space Container (Prepared for future pan/zoom) */}
-        <Card 
+        <Card
           definition={mockCardDef}
           x={100}
           y={100}
@@ -60,17 +60,20 @@ export function Table() {
           orientation="upright"
         />
 
-        <Card 
+        {/* Tapped cards rotate around their center, so their visual
+            bounding box is wider than it is tall — positioned with
+            enough clearance to avoid overlapping the neighboring cards. */}
+        <Card
           definition={mockCardDefLongText}
-          x={350}
-          y={100}
+          x={500}
+          y={240}
           face="front"
           orientation="tapped"
         />
 
-        <Card 
+        <Card
           definition={mockCardDef}
-          x={600}
+          x={750}
           y={100}
           face="back"
           orientation="upright"

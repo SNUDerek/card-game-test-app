@@ -15,11 +15,10 @@ export function Card({ definition, x, y, face, orientation }: CardProps) {
   const rotation = orientation === "tapped" ? 90 : 0;
   
   return (
-    <Group 
-      x={x} 
-      y={y} 
-      rotation={rotation} 
-      draggable
+    <Group
+      x={x}
+      y={y}
+      rotation={rotation}
       // Set offset to center so rotation revolves around center
       offsetX={rotation ? CARD_WIDTH / 2 : 0}
       offsetY={rotation ? CARD_HEIGHT / 2 : 0}

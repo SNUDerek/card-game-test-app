@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { Group, Rect, Text, Image as KonvaImage } from "react-konva";
 import type { CardDefinition, CardFace } from "@card-table/shared";
 import { useImage } from "../hooks/useImage";
+import { BODY_LINE_HEIGHT, fitBodyFontSize } from "./fit-text";
 
 interface CardRendererProps {
   definition: CardDefinition;
@@ -10,9 +12,15 @@ interface CardRendererProps {
 export const CARD_WIDTH = 200;
 export const CARD_HEIGHT = 280;
 export const ART_HEIGHT = 140;
+const BODY_WIDTH = CARD_WIDTH - 20;
+const BODY_HEIGHT = CARD_HEIGHT - ART_HEIGHT - 65;
 
 export function CardRenderer({ definition, face }: CardRendererProps) {
   const [image] = useImage(definition.imageUrl);
+  const bodyFontSize = useMemo(
+    () => fitBodyFontSize(definition.body, BODY_WIDTH, BODY_HEIGHT),
+    [definition.body],
+  );
 
   if (face === "back") {
     return (
@@ -106,19 +114,19 @@ export function CardRenderer({ definition, face }: CardRendererProps) {
         fill="#475569"
       />
 
-      <Group 
-        x={10} 
-        y={ART_HEIGHT + 55} 
-        clipX={0} 
-        clipY={0} 
-        clipWidth={CARD_WIDTH - 20} 
-        clipHeight={CARD_HEIGHT - ART_HEIGHT - 65}
+      <Group
+        x={10}
+        y={ART_HEIGHT + 55}
+        clipX={0}
+        clipY={0}
+        clipWidth={BODY_WIDTH}
+        clipHeight={BODY_HEIGHT}
       >
         <Text
           text={definition.body}
-          width={CARD_WIDTH - 20}
-          fontSize={12}
-          lineHeight={1.4}
+          width={BODY_WIDTH}
+          fontSize={bodyFontSize}
+          lineHeight={BODY_LINE_HEIGHT}
           fill="#334155"
         />
       </Group>
