@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": "creature-goblin",
   "name": "Goblin",
   "type": "creature",
   "body": "A red goblin. Why red and not green?"
