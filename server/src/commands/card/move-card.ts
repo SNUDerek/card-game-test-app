@@ -7,6 +7,7 @@ import {
 import type { RoomState } from "../../rooms/state/RoomState.js";
 import { DomainCommandError } from "../errors.js";
 import { bringToFrontIfNeeded } from "./bring-to-front.js";
+import { getStandaloneCard } from "./card-access.js";
 
 export function moveCard(
   state: RoomState,
@@ -15,11 +16,7 @@ export function moveCard(
   now: number,
   lockTimeoutMs: number,
 ): void {
-  const card = state.cards.get(payload.cardId);
-  if (!card) throw new DomainCommandError(`Unknown card: ${payload.cardId}`);
-  if (card.stackId !== undefined) {
-    throw new DomainCommandError("Cards in a stack cannot be moved independently.");
-  }
+  const card = getStandaloneCard(state, payload.cardId);
   if (
     Math.abs(payload.x) > WORLD_COORDINATE_LIMIT ||
     Math.abs(payload.y) > WORLD_COORDINATE_LIMIT
