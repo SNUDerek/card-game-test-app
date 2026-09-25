@@ -1,6 +1,13 @@
 # Card Game Testing App
 
-Self-hosted multiplayer tabletop for prototyping physical card games. See [planning/project-spec.md](planning/project-spec.md) and [planning/data-models.md](planning/data-models.md) for the full design.
+Self-hosted multiplayer tabletop for prototyping physical card games. 
+
+Dynamically loads card data from images and json files.  
+Add a folder of cards (images and json files) to the `/cards` directory to add cards to the game.
+
+Allows for basic operations such as tapping and untapping (via right-click menu), flipping (double-clicking), stacking, shuffling stacks, and drawing from stacks.
+
+No rulesets supported, this is more like a basic Tabletop Simulator.
 
 ## Project layout
 
@@ -72,28 +79,22 @@ SERVER_PORT=9001
 **Only `CLIENT_PORT` needs to be reachable.** The client talks to the server through
 its own origin under `/colyseus`, which nginx proxies to the server container —
 WebSocket included. Nothing records the hostname, so the same image works on
-`localhost`, a LAN address, or a public host with no rebuild:
-
-```
-http://jennifer.dereks.house:9000
-```
-
-Share that URL and the room link; a co-developer needs nothing else.
+`localhost`, a LAN address, or a public host with no rebuild.
 
 The **Copy link** button builds its URL from the address the browser used, so a
 session opened on the host itself copies a `localhost` link. Set
 `PUBLIC_CLIENT_URL` to the address players should actually use, port included,
-and every copied link points there regardless of who copies it:
+and every copied link points there:
 
 ```ini
-PUBLIC_CLIENT_URL=http://jennifer.dereks.house:9000
+PUBLIC_CLIENT_URL=http://my.serverurl.com:9000
 ```
 
 Set `PUBLIC_SERVER_URL` **only** if you want browsers to reach the server directly
 instead of through the proxy — then `SERVER_PORT` must be reachable too:
 
 ```ini
-PUBLIC_SERVER_URL=http://jennifer.dereks.house:9001
+PUBLIC_SERVER_URL=http://my.serverurl.com:9001
 ```
 
 Use `https://` when serving over TLS; the client upgrades the socket to `wss://`
@@ -105,6 +106,34 @@ built, so changing it only needs `docker compose up -d`. (The older
 inlined at build time and cannot configure a built image.)
 
 The local `cards/` directory is bind-mounted as a read-only volume into the server container. This means you can add, remove, or modify card assets (`.jpg`/`.png` and `.json`) locally, and the server will recognize them without requiring a container rebuild (a backend restart is required to load new cards).
+
+## Adding or Modifying Cards
+
+To add or modify cards in the game, place a matching pair of image and JSON files into the `cards/` directory. The server loads these dynamically at startup.
+
+### File Requirements
+Each card requires two files with the **same filename stem** (e.g., `fireball.jpg` and `fireball.json`).
+
+1. **Image File (`.jpg` or `.png`)**
+   - Must be a square image.
+   - Dimensions must be between 32px and 512px.
+
+2. **JSON Definition File (`.json`)**
+   - Must contain the following minimum fields:
+     ```json
+     {
+       "id": "unique-card-id",
+       "type": "card-type",
+       "body": "Card description or rules text."
+     }
+     ```
+   - **`id`**: A unique string identifier for the card definition. (The server will reject duplicate IDs).
+   - **`type`**: A string representing the card type (e.g., "spell", "item", "creature").
+   - **`body`**: A string containing the text to be displayed on the bottom half of the card.
+   - *Optional*: Any additional fields you include in the JSON will be preserved and passed along in a `metadata` object to the client. The card's display name is automatically derived from the filename, but you can also explicitly provide a `name` field in the JSON.
+
+> [!NOTE]
+> If you are running the app locally or via Docker, you must **restart the backend server** for it to load the new or modified card assets into the catalog.
 
 ## Usage Guide
 
