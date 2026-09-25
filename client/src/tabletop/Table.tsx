@@ -8,7 +8,11 @@ import { CARD_DEFINITION_MIME_TYPE } from "../features/card-browser/CardBrowser"
 import { useMultiplayer } from "../multiplayer/MultiplayerContext";
 import { useCardDrag } from "./interactions/drag";
 import { useInterpolatedCardPositions } from "./interactions/interpolation";
-import { getPreviewSide, MagnifyPreview } from "../features/tabletop/MagnifyPreview";
+import {
+  getPreviewBounds,
+  isWithinPreview,
+  MagnifyPreview,
+} from "../features/tabletop/MagnifyPreview";
 import { useLocalUiState } from "../state/local-ui-state";
 import { Stack } from "./Stack";
 import { findStackTarget, resolveStackTarget, STACK_OFFSET } from "./interactions/snap-detection";
@@ -29,7 +33,7 @@ export function Table() {
   );
   const interpolatedPositions = useInterpolatedCardPositions(cards, locallyDraggedIds);
   const stackDrag = useStackDrag(multiplayer);
-  const { magnifiedCardId, magnifyCard, unmagnifyCard } = useLocalUiState();
+  const { magnifiedCardId, magnifyCard, clearMagnifiedCard } = useLocalUiState();
   const [cardMenu, setCardMenu] = useState<CardMenuState | null>(null);
   // The menu acts on live card state, so it closes itself if the card is
   // deleted or restacked by another player while it is open.
@@ -60,8 +64,8 @@ export function Table() {
       ? { x: stack.x + index * STACK_OFFSET, y: stack.y + index * STACK_OFFSET }
       : { x: card.x, y: card.y };
     const center = worldToScreen(worldPosition, DEFAULT_VIEWPORT);
-    return { definition, face: card.face, side: getPreviewSide(center.x, size.width) };
-  }, [cards, definitionsById, magnifiedCardId, size.width, stacks]);
+    return { definition, face: card.face, bounds: getPreviewBounds(center, size) };
+  }, [cards, definitionsById, magnifiedCardId, size, stacks]);
 
   useEffect(() => {
     for (const card of cards) {
@@ -113,6 +117,15 @@ export function Table() {
         });
       }}
       onPointerDown={() => setCardMenu(null)}
+      onPointerMove={(event) => {
+        // The preview is pointer-transparent, so leaving it is detected here
+        // rather than by a mouseleave on the overlay itself.
+        if (!magnified) return;
+        const bounds = containerRef.current?.getBoundingClientRect();
+        if (!bounds) return;
+        const point = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+        if (!isWithinPreview(point, magnified.bounds)) clearMagnifiedCard();
+      }}
     >
       {size.width > 0 && size.height > 0 && (
         <Stage width={size.width} height={size.height}>
@@ -144,8 +157,7 @@ export function Table() {
                       onTopContextMenu={(cardId, stackId, position) => {
                         setCardMenu({ cardId, stackId, ...position });
                       }}
-                      onTopHoverStart={magnifyCard}
-                      onTopHoverEnd={unmagnifyCard} />
+                    />
                   );
                   const card = object.card;
                   const definition: CardDefinition | undefined = definitionsById.get(
@@ -174,8 +186,6 @@ export function Table() {
                       onContextMenu={(cardId, position) => {
                         setCardMenu({ cardId, ...position });
                       }}
-                      onHoverStart={magnifyCard}
-                      onHoverEnd={unmagnifyCard}
                       onBringToFront={(cardId) => {
                         void multiplayer.bringToFront(cardId).catch((cause: unknown) => {
                           console.warn("Bring-to-front rejected:", cause);
@@ -193,7 +203,7 @@ export function Table() {
         <MagnifyPreview
           definition={magnified.definition}
           face={magnified.face}
-          side={magnified.side}
+          bounds={magnified.bounds}
         />
       )}
       {connectionError && <p className="tabletop-error">{connectionError}</p>}
@@ -203,6 +213,7 @@ export function Table() {
           card={menuCard}
           stack={menuStack}
           commands={multiplayer}
+          onMagnify={magnifyCard}
           onClose={() => setCardMenu(null)}
         />
       )}
