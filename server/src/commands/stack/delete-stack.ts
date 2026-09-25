@@ -3,6 +3,7 @@ import type { RoomState } from "../../rooms/state/RoomState.js";
 import { DomainCommandError } from "../errors.js";
 import { rejectForeignLock } from "../player/object-locks.js";
 import { getStack } from "./stack-helpers.js";
+import { clearHoversOfCard } from "../player/set-hover.js";
 
 export function deleteStack(
   state: RoomState,
@@ -36,6 +37,7 @@ export function deleteStack(
   for (const card of cards) {
     state.cards.delete(card!.id);
     state.locks.delete(objectLockKey({ kind: "card", id: card!.id }));
+    clearHoversOfCard(state, card!.id);
   }
   state.stacks.delete(stack.id);
   state.locks.delete(objectLockKey({ kind: "stack", id: stack.id }));

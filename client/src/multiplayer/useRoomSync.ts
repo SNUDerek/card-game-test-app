@@ -62,6 +62,7 @@ export function useRoomSync(): RoomSync {
             displayName: player.displayName,
             connected: player.connected,
             joinOrder: player.joinOrder,
+            hoveredCardId: player.hoveredCardId,
           }))
           .sort((a, b) => a.joinOrder - b.joinOrder),
       );

@@ -3,6 +3,7 @@ import type { RoomState } from "../../rooms/state/RoomState.js";
 import { DomainCommandError } from "../errors.js";
 import { getAccessibleCard } from "./card-access.js";
 import { collapseStackIfNeeded } from "../stack/stack-helpers.js";
+import { clearHoversOfCard } from "../player/set-hover.js";
 
 export function deleteCard(
   state: RoomState,
@@ -27,4 +28,5 @@ export function deleteCard(
     state.cards.delete(cardId);
   }
   state.locks.delete(lockKey);
+  clearHoversOfCard(state, cardId);
 }

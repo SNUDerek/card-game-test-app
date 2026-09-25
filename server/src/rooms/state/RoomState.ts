@@ -7,6 +7,11 @@ export const PlayerState = schema(
     displayName: t.string(),
     connected: t.boolean().default(true),
     joinOrder: t.number(),
+    /**
+     * Presence only: the card this player's pointer is over. Carries no claim
+     * on the card and never gates a command — see commands/player/set-hover.
+     */
+    hoveredCardId: t.string().optional(),
   },
   "Player",
 );

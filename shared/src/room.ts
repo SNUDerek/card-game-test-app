@@ -22,6 +22,11 @@ export interface Player {
   displayName: string;
   connected: boolean;
   joinOrder: number;
+  /**
+   * Card this player's pointer is currently over, if any. Presence, not
+   * ownership: hovering claims nothing and blocks no one.
+   */
+  hoveredCardId?: string;
 }
 
 export const CardFaceSchema = z.enum(["front", "back"]);

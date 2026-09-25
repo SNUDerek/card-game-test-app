@@ -18,6 +18,7 @@ import {
   moveCard as sendMoveCard,
   moveStack as sendMoveStack,
   releaseObject as sendReleaseObject,
+  setHover as sendSetHover,
   shuffleStack as sendShuffleStack,
   spawnCard as sendSpawnCard,
   stackCard as sendStackCard,
@@ -41,6 +42,8 @@ export interface TableCommands {
   drawCard(payload: DrawCardPayload): Promise<void>;
   shuffleStack(stackId: string): Promise<void>;
   deleteStack(stackId: string): Promise<void>;
+  /** Reports pointer presence; `null` when the pointer leaves a card. */
+  setHover(cardId: string | null): Promise<void>;
 }
 
 export const NOT_CONNECTED_MESSAGE = "The tabletop is not connected yet.";
@@ -85,6 +88,8 @@ export function useTableCommands(roomRef: RefObject<TableRoom | null>): TableCom
         withRoom(async (room) => void (await sendShuffleStack(room, { stackId }))),
       deleteStack: (stackId) =>
         withRoom(async (room) => void (await sendDeleteStack(room, { stackId }))),
+      setHover: (cardId) =>
+        withRoom(async (room) => void (await sendSetHover(room, { cardId }))),
     }),
     [withRoom],
   );

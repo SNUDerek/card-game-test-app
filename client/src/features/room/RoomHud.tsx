@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMultiplayer } from "../../multiplayer/MultiplayerContext";
 import { roomJoinUrl } from "../../multiplayer/session";
+import { playerColor } from "./player-colors";
 import "./RoomHud.css";
 
 /**
@@ -38,6 +39,11 @@ export function RoomHud() {
       <ul className="room-hud-players">
         {players.map((player) => (
           <li key={player.id} className={player.connected ? undefined : "is-away"}>
+            <span
+              className="room-hud-swatch"
+              style={{ background: playerColor(player.joinOrder) }}
+              aria-hidden="true"
+            />
             <span className="room-hud-name">{player.displayName}</span>
             {player.id === selfPlayerId && <span className="room-hud-tag">you</span>}
             {player.id === hostPlayerId && <span className="room-hud-tag is-host">host</span>}

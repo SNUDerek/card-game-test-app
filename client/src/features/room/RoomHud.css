@@ -70,6 +70,19 @@
   color: #94a3b8;
 }
 
+/* Matches the outline drawn around the card this player is hovering. */
+.room-hud-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.room-hud-players li.is-away .room-hud-swatch {
+  opacity: 0.4;
+}
+
 .room-hud-name {
   font-weight: 600;
 }

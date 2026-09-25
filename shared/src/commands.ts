@@ -16,6 +16,7 @@ export const TABLE_COMMANDS = {
   DRAW_CARD: "DRAW_CARD",
   SHUFFLE_STACK: "SHUFFLE_STACK",
   DELETE_STACK: "DELETE_STACK",
+  SET_HOVER: "SET_HOVER",
 } as const;
 
 /**
@@ -129,6 +130,17 @@ export interface DeleteStackResult { deleted: true }
  * permutation or a seed, so a client cannot predict or dictate the result.
  */
 export interface ShuffleStackResult { shuffled: true }
+
+/**
+ * Reports where this player's pointer is, or `null` when it leaves a card.
+ * Unlike every other command here this claims nothing and mutates no card: it
+ * only updates the sender's own presence.
+ */
+export const SetHoverPayloadSchema = z.object({
+  cardId: z.string().min(1).nullable(),
+});
+export type SetHoverPayload = z.infer<typeof SetHoverPayloadSchema>;
+export interface SetHoverResult { hovering: boolean }
 
 export function objectLockKey(object: TableObjectRef): string {
   return `${object.kind}:${object.id}`;

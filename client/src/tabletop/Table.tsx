@@ -15,17 +15,21 @@ import {
 } from "../features/tabletop/MagnifyPreview";
 import { useLocalUiState } from "../state/local-ui-state";
 import { Stack } from "./Stack";
-import { findStackTarget, resolveStackTarget, STACK_OFFSET } from "./interactions/snap-detection";
+import { findStackTarget, resolveStackTarget } from "./interactions/snap-detection";
 import { useStackDrag } from "./interactions/stack-drag";
 import { TableContextMenu, type CardMenuState } from "./TableContextMenu";
 import { SnapTargetOutline } from "./SnapTargetOutline";
+import { HoverAttribution, resolveHoverHighlights } from "./HoverAttribution";
+import { resolveRenderedCardPositions } from "./card-positions";
+import { useHoverReporter } from "./interactions/hover-reporter";
 
 export function Table() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const { definitionsById } = useCardCatalog();
   const multiplayer = useMultiplayer();
-  const { cards, stacks, connectionError, spawnCard } = multiplayer;
+  const { cards, stacks, players, selfPlayerId, connectionError, spawnCard } = multiplayer;
+  const hover = useHoverReporter(multiplayer);
   const drag = useCardDrag(multiplayer);
   const locallyDraggedIds = useMemo(
     () => new Set(Object.keys(drag.localPositions)),
@@ -33,6 +37,21 @@ export function Table() {
   );
   const interpolatedPositions = useInterpolatedCardPositions(cards, locallyDraggedIds);
   const stackDrag = useStackDrag(multiplayer);
+  // One answer for where each card is drawn, shared by the cards themselves and
+  // by everything that decorates them, so they cannot drift apart in motion.
+  const renderedPositions = useMemo(
+    () =>
+      resolveRenderedCardPositions(cards, stacks, {
+        dragged: drag.localPositions,
+        interpolated: interpolatedPositions,
+        draggedStacks: stackDrag.localPositions,
+      }),
+    [cards, stacks, drag.localPositions, interpolatedPositions, stackDrag.localPositions],
+  );
+  const hoverHighlights = useMemo(
+    () => resolveHoverHighlights(players, cards, renderedPositions, selfPlayerId),
+    [players, cards, renderedPositions, selfPlayerId],
+  );
   const { magnifiedCardId, magnifyCard, clearMagnifiedCard } = useLocalUiState();
   const [cardMenu, setCardMenu] = useState<CardMenuState | null>(null);
   // The menu acts on live card state, so it closes itself if the card is
@@ -56,16 +75,12 @@ export function Table() {
     const card = cards.find((candidate) => candidate.id === magnifiedCardId);
     const definition = card && definitionsById.get(card.definitionId);
     if (!card || !definition) return null;
-    // Card instance coordinates anchor the centered Konva group (see Card's
-    // offset), so they already represent the card center in world space.
-    const stack = card.stackId ? stacks.find((candidate) => candidate.id === card.stackId) : undefined;
-    const index = stack ? stack.cardIds.indexOf(card.id) : 0;
-    const worldPosition = stack
-      ? { x: stack.x + index * STACK_OFFSET, y: stack.y + index * STACK_OFFSET }
-      : { x: card.x, y: card.y };
+    // Card positions anchor the centered Konva group (see Card's offset), so
+    // they already represent the card center in world space.
+    const worldPosition = renderedPositions.get(card.id) ?? { x: card.x, y: card.y };
     const center = worldToScreen(worldPosition, DEFAULT_VIEWPORT);
     return { definition, face: card.face, bounds: getPreviewBounds(center, size) };
-  }, [cards, definitionsById, magnifiedCardId, size, stacks]);
+  }, [cards, definitionsById, magnifiedCardId, renderedPositions, size]);
 
   useEffect(() => {
     for (const card of cards) {
@@ -157,6 +172,8 @@ export function Table() {
                       onTopContextMenu={(cardId, stackId, position) => {
                         setCardMenu({ cardId, stackId, ...position });
                       }}
+                      onTopHoverStart={hover.hoverStart}
+                      onTopHoverEnd={hover.hoverEnd}
                     />
                   );
                   const card = object.card;
@@ -164,8 +181,7 @@ export function Table() {
                     card.definitionId,
                   );
                   if (!definition) return null;
-                  const position = drag.localPositions[card.id] ??
-                    interpolatedPositions[card.id] ?? { x: card.x, y: card.y };
+                  const position = renderedPositions.get(card.id) ?? { x: card.x, y: card.y };
                   return (
                     <Card
                       key={card.id}
@@ -186,6 +202,8 @@ export function Table() {
                       onContextMenu={(cardId, position) => {
                         setCardMenu({ cardId, ...position });
                       }}
+                      onHoverStart={hover.hoverStart}
+                      onHoverEnd={hover.hoverEnd}
                       onBringToFront={(cardId) => {
                         void multiplayer.bringToFront(cardId).catch((cause: unknown) => {
                           console.warn("Bring-to-front rejected:", cause);
@@ -194,6 +212,11 @@ export function Table() {
                     />
                   );
                 })}
+              {/* Drawn above the cards so an outline is never hidden by the
+                  card stacked on top of the one it marks. */}
+              {hoverHighlights.map((highlight) => (
+                <HoverAttribution key={highlight.cardId} highlight={highlight} />
+              ))}
               {resolvedSnapTarget && <SnapTargetOutline target={resolvedSnapTarget} />}
             </Group>
           </Layer>
