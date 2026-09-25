@@ -2,30 +2,16 @@ import { Stage, Layer, Rect, Group } from "react-konva";
 import { useEffect, useRef, useState } from "react";
 import { Card } from "./Card";
 import type { CardDefinition } from "@card-table/shared";
-import { DEFAULT_VIEWPORT } from "./viewport";
-
-// Mock definitions per Unit 5 specs (No server data yet)
-const mockCardDef: CardDefinition = {
-  id: "phoenix",
-  name: "Phoenix",
-  type: "Creature",
-  body: "Deal 3 damage to any target. This card cannot be countered by normal means.",
-  imageUrl: "/cards/phoenix.png",
-  sourceName: "phoenix",
-};
-
-const mockCardDefLongText: CardDefinition = {
-  id: "necromancer",
-  name: "Necromancer",
-  type: "Creature",
-  body: "Flying, Trample. When this creature enters the battlefield, you may destroy target artifact or enchantment. If you do, draw a card. This creature gets +1/+1 for each other undead you control on the battlefield.",
-  imageUrl: "/cards/necromancer.png",
-  sourceName: "necromancer",
-};
+import { DEFAULT_VIEWPORT, screenToWorld } from "./viewport";
+import { useCardCatalog } from "../features/card-browser/CardCatalogContext";
+import { CARD_DEFINITION_MIME_TYPE } from "../features/card-browser/CardBrowser";
+import { useMultiplayer } from "../multiplayer/MultiplayerContext";
 
 export function Table() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const { definitionsById } = useCardCatalog();
+  const { cards, connectionError, spawnCard } = useMultiplayer();
 
   useEffect(() => {
     const container = containerRef.current;
@@ -44,7 +30,30 @@ export function Table() {
   }, []);
 
   return (
-    <div ref={containerRef} className="tabletop-container">
+    <div
+      ref={containerRef}
+      className="tabletop-container"
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes(CARD_DEFINITION_MIME_TYPE)) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        }
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        const definitionId = event.dataTransfer.getData(CARD_DEFINITION_MIME_TYPE);
+        const container = containerRef.current;
+        if (!definitionId || !container) return;
+        const bounds = container.getBoundingClientRect();
+        const position = screenToWorld(
+          { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+          DEFAULT_VIEWPORT,
+        );
+        void spawnCard({ definitionId, ...position }).catch((cause: unknown) => {
+          console.error("Failed to spawn card:", cause);
+        });
+      }}
+    >
       {size.width > 0 && size.height > 0 && (
         <Stage width={size.width} height={size.height}>
           <Layer>
@@ -56,33 +65,20 @@ export function Table() {
               scaleX={DEFAULT_VIEWPORT.scale}
               scaleY={DEFAULT_VIEWPORT.scale}
             >
-              <Card
-                definition={mockCardDef}
-                x={200}
-                y={240}
-                face="front"
-                orientation="upright"
-              />
-
-              <Card
-                definition={mockCardDefLongText}
-                x={500}
-                y={240}
-                face="front"
-                orientation="tapped"
-              />
-
-              <Card
-                definition={mockCardDef}
-                x={800}
-                y={240}
-                face="back"
-                orientation="upright"
-              />
+              {[...cards]
+                .sort((a, b) => a.zIndex - b.zIndex)
+                .map((card) => {
+                  const definition: CardDefinition | undefined = definitionsById.get(
+                    card.definitionId,
+                  );
+                  if (!definition) return null;
+                  return <Card key={card.id} definition={definition} {...card} />;
+                })}
             </Group>
           </Layer>
         </Stage>
       )}
+      {connectionError && <p className="tabletop-error">{connectionError}</p>}
     </div>
   );
 }

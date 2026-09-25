@@ -13,3 +13,14 @@ export type CardFace = z.infer<typeof CardFaceSchema>;
 
 export const CardOrientationSchema = z.enum(["upright", "tapped"]);
 export type CardOrientation = z.infer<typeof CardOrientationSchema>;
+
+export interface CardInstance {
+  id: string;
+  definitionId: string;
+  face: CardFace;
+  orientation: CardOrientation;
+  x: number;
+  y: number;
+  stackId?: string;
+  zIndex: number;
+}

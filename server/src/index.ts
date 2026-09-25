@@ -26,7 +26,7 @@ try {
 const server = defineServer({
   transport: new WebSocketTransport(),
   rooms: {
-    table: defineRoom(TableRoom),
+    table: defineRoom(TableRoom, { cardDefinitionIds: [...cardCatalog.keys()] }),
   },
   express: (app) => {
     app.use(cors());

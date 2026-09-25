@@ -1,39 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import { CardCatalogResponseSchema, type CardDefinition } from "@card-table/shared";
+import { useMemo, useState } from "react";
+import { useCardCatalog } from "./CardCatalogContext";
 import "./CardBrowser.css";
 
+export const CARD_DEFINITION_MIME_TYPE = "application/x-card-definition-id";
+
 export function CardBrowser() {
-  const [cards, setCards] = useState<CardDefinition[]>([]);
+  const { cards, isLoading, error } = useCardCatalog();
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [sortBy, setSortBy] = useState<"name" | "id" | "type">("name");
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function loadCards() {
-      try {
-        const response = await fetch("/api/cards", { signal: controller.signal });
-        if (!response.ok) {
-          throw new Error(`Catalog request failed with status ${response.status}.`);
-        }
-
-        const catalog = CardCatalogResponseSchema.parse(await response.json());
-        setCards(catalog.cards);
-      } catch (cause) {
-        if (controller.signal.aborted) return;
-        console.error("Failed to fetch cards:", cause);
-        setError("The card catalog could not be loaded.");
-      } finally {
-        if (!controller.signal.aborted) setIsLoading(false);
-      }
-    }
-
-    void loadCards();
-    return () => controller.abort();
-  }, []);
 
   const filteredCards = useMemo(() => {
     const query = filter.trim().toLocaleLowerCase();
@@ -104,7 +79,15 @@ export function CardBrowser() {
             {!isLoading &&
               !error &&
               filteredCards.map((card) => (
-                <article key={card.id} className="card-browser-item">
+                <article
+                  key={card.id}
+                  className="card-browser-item"
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "copy";
+                    event.dataTransfer.setData(CARD_DEFINITION_MIME_TYPE, card.id);
+                  }}
+                >
                   <img
                     src={card.imageUrl}
                     alt=""
