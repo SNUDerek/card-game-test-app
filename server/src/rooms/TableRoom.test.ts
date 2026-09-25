@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom } from "colyseus";
 import { TableRoom } from "./TableRoom.js";
+import { TABLE_COMMANDS } from "@card-table/shared";
 
 describe("TableRoom connection lifecycle", () => {
   let colyseus: ColyseusTestServer;
@@ -9,7 +10,10 @@ describe("TableRoom connection lifecycle", () => {
   beforeAll(async () => {
     colyseus = await boot({
       rooms: {
-        table: defineRoom(TableRoom),
+        table: defineRoom(TableRoom, {
+          cardDefinitionIds: ["spell-1"],
+          lockTimeoutMs: 75,
+        }),
       },
     });
   });
@@ -56,5 +60,127 @@ describe("TableRoom connection lifecycle", () => {
     await expect(colyseus.sdk.joinOrCreate("table", options)).rejects.toThrow(
       "A display name between 1 and 50 characters is required.",
     );
+  });
+
+  it("validates and synchronizes spawned cards", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+
+    const result = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+      definitionId: "spell-1",
+      x: 125,
+      y: 240,
+    });
+    await room.waitForNextPatch();
+
+    expect(result.cardId).toEqual(expect.any(String));
+    expect(room.state.cards.get(result.cardId)?.toJSON()).toMatchObject({
+      definitionId: "spell-1",
+      x: 125,
+      y: 240,
+      face: "front",
+      orientation: "upright",
+    });
+    expect(alice.state.toJSON()).toEqual(room.state.toJSON());
+    expect(bob.state.toJSON()).toEqual(room.state.toJSON());
+  });
+
+  it("rejects malformed and unknown spawn requests without mutation", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+
+    await expect(
+      alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+        definitionId: "spell-1",
+        x: Number.POSITIVE_INFINITY,
+        y: 0,
+      }),
+    ).rejects.toThrow("Invalid SPAWN_CARD payload");
+    await expect(
+      alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+        definitionId: "missing",
+        x: 0,
+        y: 0,
+      }),
+    ).rejects.toThrow("Unknown card definition");
+    expect(room.state.cards.size).toBe(0);
+  });
+
+  it("synchronizes claim, rejection, idempotent refresh, and release", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+      definitionId: "spell-1",
+      x: 0,
+      y: 0,
+    });
+    const object = { kind: "card", id: cardId };
+
+    const firstClaim = await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, { object });
+    const refreshedClaim = await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, { object });
+    await expect(bob.request(TABLE_COMMANDS.CLAIM_OBJECT, { object })).rejects.toThrow(
+      "already claimed",
+    );
+    await room.waitForNextPatch();
+
+    expect(refreshedClaim.expiresAt).toBeGreaterThanOrEqual(firstClaim.expiresAt);
+    expect(room.state.locks.get(`card:${cardId}`)).toMatchObject({ objectId: cardId });
+    expect(alice.state.toJSON()).toEqual(room.state.toJSON());
+    expect(bob.state.toJSON()).toEqual(room.state.toJSON());
+
+    await alice.request(TABLE_COMMANDS.RELEASE_OBJECT, { object });
+    await room.waitForNextPatch();
+    expect(room.state.locks.size).toBe(0);
+  });
+
+  it("releases locks after timeout and when the owner disconnects", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+      definitionId: "spell-1",
+      x: 0,
+      y: 0,
+    });
+    const object = { kind: "card", id: cardId };
+
+    await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, { object });
+    expect(room.state.locks.size).toBe(1);
+    await new Promise((resolve) => setTimeout(resolve, 125));
+    expect(room.state.locks.size).toBe(0);
+
+    await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, { object });
+    expect(room.state.locks.size).toBe(1);
+    await alice.leave();
+    expect(room.state.locks.size).toBe(0);
+  });
+
+  it("only lets the lock owner move a standalone card", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+      definitionId: "spell-1",
+      x: 0,
+      y: 0,
+    });
+
+    await expect(
+      alice.request(TABLE_COMMANDS.MOVE_CARD, { cardId, x: 10, y: 20 }),
+    ).rejects.toThrow("must be claimed");
+    await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, {
+      object: { kind: "card", id: cardId },
+    });
+    await expect(
+      bob.request(TABLE_COMMANDS.MOVE_CARD, { cardId, x: 10, y: 20 }),
+    ).rejects.toThrow("must be claimed");
+
+    await alice.request(TABLE_COMMANDS.MOVE_CARD, { cardId, x: 125, y: 240 });
+    await room.waitForNextPatch();
+
+    expect(room.state.cards.get(cardId)).toMatchObject({ x: 125, y: 240 });
+    expect(alice.state.toJSON()).toEqual(room.state.toJSON());
+    expect(bob.state.toJSON()).toEqual(room.state.toJSON());
   });
 });

@@ -12,6 +12,20 @@ body {
 }
 
 .tabletop-container {
+  position: relative;
   width: 100%;
   height: 100%;
+}
+
+.tabletop-error {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 10;
+  margin: 0;
+  padding: 8px 12px;
+  transform: translateX(-50%);
+  border-radius: 6px;
+  background: #7f1d1d;
+  color: #fee2e2;
 }

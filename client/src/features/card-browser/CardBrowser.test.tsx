@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CardBrowser } from "./CardBrowser";
+import { CardCatalogProvider } from "./CardCatalogContext";
 
 const cards = [
   {
@@ -32,7 +33,11 @@ function mockCatalogResponse(body: unknown, ok = true) {
 }
 
 async function openBrowser() {
-  render(<CardBrowser />);
+  render(
+    <CardCatalogProvider>
+      <CardBrowser />
+    </CardCatalogProvider>,
+  );
   fireEvent.click(screen.getByRole("button", { name: "Open Catalog" }));
   await waitFor(() => expect(screen.queryByText("Loading catalog…")).not.toBeInTheDocument());
 }

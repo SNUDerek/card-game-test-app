@@ -1,6 +1,7 @@
 import { Group } from "react-konva";
 import { CardRenderer, CARD_WIDTH, CARD_HEIGHT } from "../cards/CardRenderer";
 import type { CardDefinition, CardFace, CardOrientation } from "@card-table/shared";
+import type { Point } from "./viewport";
 
 interface CardProps {
   definition: CardDefinition;
@@ -8,6 +9,10 @@ interface CardProps {
   y: number;
   face: CardFace;
   orientation: CardOrientation;
+  id: string;
+  onDragStart?(cardId: string, position: Point): void;
+  onDragMove?(cardId: string, position: Point): void;
+  onDragEnd?(cardId: string, position: Point): void;
 }
 
 export function getCardTransform(orientation: CardOrientation) {
@@ -18,7 +23,17 @@ export function getCardTransform(orientation: CardOrientation) {
   } as const;
 }
 
-export function Card({ definition, x, y, face, orientation }: CardProps) {
+export function Card({
+  definition,
+  id,
+  x,
+  y,
+  face,
+  orientation,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+}: CardProps) {
   const transform = getCardTransform(orientation);
 
   return (
@@ -28,6 +43,10 @@ export function Card({ definition, x, y, face, orientation }: CardProps) {
       rotation={transform.rotation}
       offsetX={transform.offsetX}
       offsetY={transform.offsetY}
+      draggable
+      onDragStart={() => onDragStart?.(id, { x, y })}
+      onDragMove={(event) => onDragMove?.(id, event.target.position())}
+      onDragEnd={(event) => onDragEnd?.(id, event.target.position())}
     >
       <CardRenderer definition={definition} face={face} />
     </Group>

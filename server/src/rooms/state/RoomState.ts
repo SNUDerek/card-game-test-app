@@ -26,10 +26,22 @@ export const CardInstanceState = schema(
 );
 export type CardInstanceState = SchemaType<typeof CardInstanceState>;
 
+export const ObjectLockState = schema(
+  {
+    objectKind: t.string<"card">(),
+    objectId: t.string(),
+    playerId: t.string(),
+    expiresAt: t.number(),
+  },
+  "ObjectLock",
+);
+export type ObjectLockState = SchemaType<typeof ObjectLockState>;
+
 export const RoomState = schema(
   {
     cards: t.map(CardInstanceState),
     players: t.map(PlayerState),
+    locks: t.map(ObjectLockState),
   },
   "RoomState",
 );
