@@ -15,6 +15,12 @@ import {
   type DeleteCardResult,
   type StackCardPayload,
   type StackCardResult,
+  type MoveStackPayload,
+  type MoveStackResult,
+  type DrawCardPayload,
+  type DrawCardResult,
+  type StackIdPayload,
+  type DeleteStackResult,
 } from "@card-table/shared";
 import type { Room } from "@colyseus/sdk";
 
@@ -77,4 +83,18 @@ export function deleteCard(room: Room, payload: CardIdPayload): Promise<DeleteCa
 
 export function stackCard(room: Room, payload: StackCardPayload): Promise<StackCardResult> {
   return room.request(TABLE_COMMANDS.STACK_CARD, payload);
+}
+
+export function moveStack(room: Room, payload: MoveStackPayload, confirmed = false): Promise<MoveStackResult | void> {
+  if (confirmed) return room.request(TABLE_COMMANDS.MOVE_STACK, payload);
+  room.send(TABLE_COMMANDS.MOVE_STACK, payload);
+  return Promise.resolve();
+}
+
+export function drawCard(room: Room, payload: DrawCardPayload): Promise<DrawCardResult> {
+  return room.request(TABLE_COMMANDS.DRAW_CARD, payload);
+}
+
+export function deleteStack(room: Room, payload: StackIdPayload): Promise<DeleteStackResult> {
+  return room.request(TABLE_COMMANDS.DELETE_STACK, payload);
 }

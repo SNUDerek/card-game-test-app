@@ -16,7 +16,17 @@ describe("findStackTarget", () => {
 
   it("prefers an explicit stack target", () => {
     const stack: CardStack = { id: "stack-1", x: 100, y: 100, cardIds: ["a", "b"], zIndex: 2 };
-    expect(findStackTarget("source", { x: 108, y: 108 }, [card("target", 108, 108)], [stack]))
+    const cards = [card("source", 0, 0), card("a", 100, 100), card("b", 108, 108)];
+    cards[1]!.stackId = "stack-1";
+    cards[2]!.stackId = "stack-1";
+    expect(findStackTarget("source", { x: 108, y: 108 }, cards, [stack]))
       .toEqual({ kind: "stack", stackId: "stack-1" });
+  });
+
+  it("does not preview a face-incompatible target", () => {
+    const source = card("source", 0, 0);
+    source.face = "back";
+    expect(findStackTarget("source", { x: 100, y: 100 }, [source, card("target", 100, 100)], []))
+      .toBeNull();
   });
 });

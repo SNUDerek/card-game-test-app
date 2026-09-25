@@ -28,7 +28,11 @@ export function spawnCard(
   const zIndex = [...state.cards.values()].reduce(
     (highest, card) => Math.max(highest, card.zIndex),
     -1,
-  ) + 1;
+  );
+  const stackZIndex = [...state.stacks.values()].reduce(
+    (highest, stack) => Math.max(highest, stack.zIndex),
+    -1,
+  );
   const card = new CardInstanceState({
     id: createId(),
     definitionId: payload.definitionId,
@@ -36,7 +40,7 @@ export function spawnCard(
     orientation: "upright",
     x: payload.x,
     y: payload.y,
-    zIndex,
+    zIndex: Math.max(zIndex, stackZIndex) + 1,
   });
 
   state.cards.set(card.id, card);

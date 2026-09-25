@@ -14,15 +14,21 @@ export function findStackTarget(
   cards: readonly CardInstance[],
   stacks: readonly CardStack[],
 ): StackTarget | null {
+  const source = cards.find((card) => card.id === sourceCardId);
+  if (!source) return null;
   const withinCard = (x: number, y: number) =>
     Math.abs(position.x - x) <= CARD_WIDTH / 2 && Math.abs(position.y - y) <= CARD_HEIGHT / 2;
-  const stack = [...stacks].reverse().find((candidate) => withinCard(
-    candidate.x + (candidate.cardIds.length - 1) * STACK_OFFSET,
-    candidate.y + (candidate.cardIds.length - 1) * STACK_OFFSET,
-  ));
+  const stack = [...stacks].sort((a, b) => b.zIndex - a.zIndex).find((candidate) => {
+    const top = cards.find((card) => card.id === candidate.cardIds.at(-1));
+    return top?.face === source.face && withinCard(
+      candidate.x + (candidate.cardIds.length - 1) * STACK_OFFSET,
+      candidate.y + (candidate.cardIds.length - 1) * STACK_OFFSET,
+    );
+  });
   if (stack) return { kind: "stack", stackId: stack.id };
-  const card = [...cards].reverse().find((candidate) =>
-    candidate.id !== sourceCardId && candidate.stackId === undefined && withinCard(candidate.x, candidate.y)
+  const card = [...cards].sort((a, b) => b.zIndex - a.zIndex).find((candidate) =>
+    candidate.id !== sourceCardId && candidate.stackId === undefined &&
+      candidate.face === source.face && withinCard(candidate.x, candidate.y)
   );
   return card ? { kind: "card", cardId: card.id } : null;
 }

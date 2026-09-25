@@ -12,6 +12,9 @@ import { getPreviewSide, MagnifyPreview } from "../features/tabletop/MagnifyPrev
 import { useLocalUiState } from "../state/local-ui-state";
 import { Stack } from "./Stack";
 import { findStackTarget } from "./interactions/snap-detection";
+import { useStackDrag } from "./interactions/stack-drag";
+import { CARD_HEIGHT, CARD_WIDTH } from "../cards/CardRenderer";
+import { STACK_OFFSET } from "./interactions/snap-detection";
 
 export function Table() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -21,13 +24,18 @@ export function Table() {
   const { cards, stacks, connectionError, spawnCard } = multiplayer;
   const interpolatedPositions = useInterpolatedCardPositions(cards);
   const drag = useCardDrag(multiplayer);
+  const stackDrag = useStackDrag(multiplayer);
   const { magnifiedCardId, magnifyCard, unmagnifyCard } = useLocalUiState();
-  const [cardMenu, setCardMenu] = useState<{ cardId: string; x: number; y: number } | null>(
+  const [cardMenu, setCardMenu] = useState<{ cardId: string; stackId?: string; x: number; y: number } | null>(
     null,
   );
   // The menu acts on live card state, so it closes itself if the card is
   // deleted or restacked by another player while it is open.
   const menuCard = cardMenu ? cards.find((card) => card.id === cardMenu.cardId) : undefined;
+  const snapTarget = useMemo(() => {
+    const active = Object.entries(drag.localPositions)[0];
+    return active ? findStackTarget(active[0], active[1], cards, stacks) : null;
+  }, [cards, drag.localPositions, stacks]);
 
   const magnified = useMemo(() => {
     const card = cards.find((candidate) => candidate.id === magnifiedCardId);
@@ -35,9 +43,14 @@ export function Table() {
     if (!card || !definition) return null;
     // Card instance coordinates anchor the centered Konva group (see Card's
     // offset), so they already represent the card center in world space.
-    const center = worldToScreen({ x: card.x, y: card.y }, DEFAULT_VIEWPORT);
+    const stack = card.stackId ? stacks.find((candidate) => candidate.id === card.stackId) : undefined;
+    const index = stack ? stack.cardIds.indexOf(card.id) : 0;
+    const worldPosition = stack
+      ? { x: stack.x + index * STACK_OFFSET, y: stack.y + index * STACK_OFFSET }
+      : { x: card.x, y: card.y };
+    const center = worldToScreen(worldPosition, DEFAULT_VIEWPORT);
     return { definition, face: card.face, side: getPreviewSide(center.x, size.width) };
-  }, [cards, definitionsById, magnifiedCardId, size.width]);
+  }, [cards, definitionsById, magnifiedCardId, size.width, stacks]);
 
   useEffect(() => {
     for (const card of cards) {
@@ -110,8 +123,18 @@ export function Table() {
                 .map((object) => {
                   if (object.kind === "stack") return (
                     <Stack key={object.stack.id} stack={object.stack}
+                      position={stackDrag.localPositions[object.stack.id] ?? object.stack}
                       cards={new Map(cards.map((card) => [card.id, card]))}
-                      definitionsById={definitionsById} />
+                      definitionsById={definitionsById}
+                      onDragStart={stackDrag.startDrag}
+                      onDragMove={stackDrag.moveDrag}
+                      onDragEnd={(stackId, position) => { void stackDrag.endDrag(stackId, position); }}
+                      onTopFlip={(cardId) => { void multiplayer.flipCard(cardId); }}
+                      onTopContextMenu={(cardId, stackId, position) => {
+                        setCardMenu({ cardId, stackId, ...position });
+                      }}
+                      onTopHoverStart={magnifyCard}
+                      onTopHoverEnd={unmagnifyCard} />
                   );
                   const card = object.card;
                   const definition: CardDefinition | undefined = definitionsById.get(
@@ -150,6 +173,20 @@ export function Table() {
                     />
                   );
                 })}
+              {snapTarget && (() => {
+                const target = snapTarget.kind === "card"
+                  ? cards.find((card) => card.id === snapTarget.cardId)
+                  : stacks.find((stack) => stack.id === snapTarget.stackId);
+                if (!target) return null;
+                const count = "cardIds" in target ? target.cardIds.length - 1 : 0;
+                return <Rect
+                  x={target.x + count * STACK_OFFSET - CARD_WIDTH / 2 - 4}
+                  y={target.y + count * STACK_OFFSET - CARD_HEIGHT / 2 - 4}
+                  width={CARD_WIDTH + 8} height={CARD_HEIGHT + 8}
+                  stroke="#facc15" strokeWidth={4} cornerRadius={10}
+                  listening={false}
+                />;
+              })()}
             </Group>
           </Layer>
         </Stage>
@@ -184,6 +221,15 @@ export function Table() {
           >
             {menuCard.orientation === "tapped" ? "Untap" : "Tap"}
           </button>
+          {cardMenu.stackId && (
+            <button type="button" role="menuitem" onClick={() => {
+              const stack = stacks.find((candidate) => candidate.id === cardMenu.stackId);
+              if (stack) void multiplayer.drawCard({
+                stackId: stack.id, x: stack.x + 60, y: stack.y + 60,
+              });
+              setCardMenu(null);
+            }}>Draw top card</button>
+          )}
           <button
             type="button"
             role="menuitem"
@@ -197,6 +243,12 @@ export function Table() {
           >
             Delete
           </button>
+          {cardMenu.stackId && (
+            <button type="button" role="menuitem" className="danger" onClick={() => {
+              void multiplayer.deleteStack(cardMenu.stackId!);
+              setCardMenu(null);
+            }}>Delete stack</button>
+          )}
         </div>
       )}
     </div>

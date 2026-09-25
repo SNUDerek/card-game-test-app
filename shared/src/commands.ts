@@ -11,6 +11,9 @@ export const TABLE_COMMANDS = {
   BRING_TO_FRONT: "BRING_TO_FRONT",
   DELETE_CARD: "DELETE_CARD",
   STACK_CARD: "STACK_CARD",
+  MOVE_STACK: "MOVE_STACK",
+  DRAW_CARD: "DRAW_CARD",
+  DELETE_STACK: "DELETE_STACK",
 } as const;
 
 export const PositionSchema = z.object({
@@ -89,6 +92,18 @@ export type StackCardPayload = z.infer<typeof StackCardPayloadSchema>;
 export interface StackCardResult {
   stackId: string;
 }
+
+export const MoveStackPayloadSchema = PositionSchema.extend({ stackId: z.string().min(1) });
+export type MoveStackPayload = z.infer<typeof MoveStackPayloadSchema>;
+export interface MoveStackResult { moved: true }
+
+export const DrawCardPayloadSchema = PositionSchema.extend({ stackId: z.string().min(1) });
+export type DrawCardPayload = z.infer<typeof DrawCardPayloadSchema>;
+export interface DrawCardResult { cardId: string }
+
+export const StackIdPayloadSchema = z.object({ stackId: z.string().min(1) });
+export type StackIdPayload = z.infer<typeof StackIdPayloadSchema>;
+export interface DeleteStackResult { deleted: true }
 
 export function objectLockKey(object: TableObjectRef): string {
   return `${object.kind}:${object.id}`;

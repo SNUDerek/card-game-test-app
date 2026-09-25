@@ -16,6 +16,8 @@ import type {
   MoveCardPayload,
   TableObjectRef,
   StackCardPayload,
+  MoveStackPayload,
+  DrawCardPayload,
 } from "@card-table/shared";
 import {
   claimObject as sendClaimObject,
@@ -28,6 +30,9 @@ import {
   bringToFront as sendBringToFront,
   deleteCard as sendDeleteCard,
   stackCard as sendStackCard,
+  moveStack as sendMoveStack,
+  drawCard as sendDrawCard,
+  deleteStack as sendDeleteStack,
 } from "./commands";
 
 interface ClientRoomState {
@@ -49,6 +54,9 @@ interface MultiplayerValue {
   bringToFront(cardId: string): Promise<void>;
   deleteCard(cardId: string): Promise<void>;
   stackCard(payload: StackCardPayload): Promise<void>;
+  moveStack(payload: MoveStackPayload, confirmed?: boolean): Promise<void>;
+  drawCard(payload: DrawCardPayload): Promise<void>;
+  deleteStack(stackId: string): Promise<void>;
 }
 
 const MultiplayerContext = createContext<MultiplayerValue | null>(null);
@@ -204,6 +212,21 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     await sendStackCard(room, payload);
   }, [room]);
 
+  const moveStack = useCallback(async (payload: MoveStackPayload, confirmed = false) => {
+    if (!room) throw new Error("The tabletop is not connected yet.");
+    await sendMoveStack(room, payload, confirmed);
+  }, [room]);
+
+  const drawCard = useCallback(async (payload: DrawCardPayload) => {
+    if (!room) throw new Error("The tabletop is not connected yet.");
+    await sendDrawCard(room, payload);
+  }, [room]);
+
+  const deleteStack = useCallback(async (stackId: string) => {
+    if (!room) throw new Error("The tabletop is not connected yet.");
+    await sendDeleteStack(room, { stackId });
+  }, [room]);
+
   const value = useMemo(
     () => ({
       cards,
@@ -219,6 +242,9 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       bringToFront,
       deleteCard,
       stackCard,
+      moveStack,
+      drawCard,
+      deleteStack,
     }),
     [
       cards,
@@ -234,6 +260,9 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       bringToFront,
       deleteCard,
       stackCard,
+      moveStack,
+      drawCard,
+      deleteStack,
     ],
   );
 
