@@ -384,3 +384,30 @@ question:
    the gate value on every asset fetch.
 5. **Presence tier (item 7).** Confirm ping-first, or commit to full cursors
    knowing it is several times the work.
+
+---
+
+## Presence Options (Item 7) Research
+
+Based on the architectural decision to keep ephemeral presence data out of `RoomState`, here are the detailed implementation options utilizing relay messages (`room.broadcast()` / `room.onMessage()`):
+
+### Option 1: The "Ping" (Smallest Effort)
+When a user double-clicks on the empty background, broadcast a `PING` message with `(x, y)` coordinates.
+* **Mechanism:** Other clients receive the ping and draw a Konva `Ring` or `Circle` that expands and fades out over ~1 second.
+* **Packages needed:** None.
+* **Pros:** Extremely easy to implement, lightweight on network traffic, no conflict with rate limiters.
+* **Cons:** Doesn't provide real-time tracking, just point-in-time attention.
+
+### Option 2: Live Cursors (Medium Effort)
+Broadcast the user's pointer coordinates at ~20Hz.
+* **Mechanism:** Render cursors in an overlay or dedicated Konva layer, completely separate from card rendering. Include a routine to fade out cursors inactive for 2+ seconds.
+* **Packages needed:** [`perfect-cursors`](https://www.npmjs.com/package/perfect-cursors) (provides spline interpolation to smooth network latency and jitter).
+* **Pros:** Standard collaborative UX; `perfect-cursors` makes it look smooth and professional.
+* **Cons:** Requires managing the Colyseus `CommandRateLimiter` to ensure 20Hz cursor messages don't exhaust the command budget.
+
+### Option 3: Fading Pen / Laser Pointer (Largest Effort)
+A temporary drawing tool (like a Google Meet laser pointer).
+* **Mechanism:** As the user drags the mouse, collect a batch of points and broadcast them. Render the resulting polygon via a Konva `Path`, and animate its opacity to `0` over ~2 seconds.
+* **Packages needed:** [`perfect-freehand`](https://www.npmjs.com/package/perfect-freehand) (generates pressure-sensitive, smooth SVG polygons from raw coordinate arrays).
+* **Pros:** Highly expressive UX; strokes look incredible.
+* **Cons:** Highest effort. Requires adding a UI state toggle to enter "pen mode" vs default "interaction mode".
