@@ -48,6 +48,8 @@ import {
 export interface TableRoomOptions {
   cardDefinitionIds?: string[];
   lockTimeoutMs?: number;
+  /** Hard cap on joined and reconnecting players in this room. */
+  maxClients?: number;
   /** Set by the creating client; never synchronized to room state. */
   password?: string;
   /** How long a dropped player keeps their identity. 0 disables reconnection. */
@@ -67,6 +69,7 @@ interface CommandContext {
 
 export const DEFAULT_OBJECT_LOCK_TIMEOUT_MS = 5_000;
 export const DEFAULT_RECONNECTION_GRACE_SECONDS = 30;
+export const DEFAULT_MAX_CLIENTS_PER_ROOM = 16;
 
 function parseJoinOptions(options: unknown): JoinRoomOptions {
   const parsed = JoinRoomOptionsSchema.safeParse(options);
@@ -122,6 +125,7 @@ export class TableRoom extends Room<{ state: RoomState }> {
     this.setState(new RoomState());
     this.cardDefinitionIds = new Set(options.cardDefinitionIds ?? []);
     this.lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
+    this.maxClients = options.maxClients ?? DEFAULT_MAX_CLIENTS_PER_ROOM;
     this.passwordHash = options.password ? hashRoomPassword(options.password) : undefined;
     this.reconnectionGraceSeconds =
       options.reconnectionGraceSeconds ?? DEFAULT_RECONNECTION_GRACE_SECONDS;

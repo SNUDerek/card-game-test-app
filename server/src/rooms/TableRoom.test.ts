@@ -52,6 +52,15 @@ describe("TableRoom connection lifecycle", () => {
     expect([...room.state.players.values()][0]?.displayName).toBe("Alice");
   });
 
+  it("caps joined players so room state cannot grow without bound", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table", { maxClients: 2 });
+    await colyseus.connectTo(room, { displayName: "Alice" });
+    await colyseus.connectTo(room, { displayName: "Bob" });
+
+    await expect(colyseus.connectTo(room, { displayName: "Mallory" })).rejects.toThrow();
+    expect(room.state.players.size).toBe(2);
+  });
+
   it.each([
     ["missing", {}],
     ["blank", { displayName: "   " }],
