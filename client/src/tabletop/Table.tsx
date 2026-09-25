@@ -22,8 +22,12 @@ export function Table() {
   const { definitionsById } = useCardCatalog();
   const multiplayer = useMultiplayer();
   const { cards, stacks, connectionError, spawnCard } = multiplayer;
-  const interpolatedPositions = useInterpolatedCardPositions(cards);
   const drag = useCardDrag(multiplayer);
+  const locallyDraggedIds = useMemo(
+    () => new Set(Object.keys(drag.localPositions)),
+    [drag.localPositions],
+  );
+  const interpolatedPositions = useInterpolatedCardPositions(cards, locallyDraggedIds);
   const stackDrag = useStackDrag(multiplayer);
   const { magnifiedCardId, magnifyCard, unmagnifyCard } = useLocalUiState();
   const [cardMenu, setCardMenu] = useState<CardMenuState | null>(null);

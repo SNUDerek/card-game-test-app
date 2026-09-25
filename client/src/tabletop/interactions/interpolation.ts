@@ -12,15 +12,40 @@ export function interpolatePosition(from: Point, to: Point, progress: number): P
   };
 }
 
-export function useInterpolatedCardPositions(cards: CardInstance[]): Record<string, Point> {
+const NO_LOCAL_CARDS: ReadonlySet<string> = new Set();
+
+/**
+ * Smooths remote card movement between authoritative positions.
+ *
+ * Cards this client is dragging are excluded: they are rendered from the drag's
+ * own local position, and their authoritative position necessarily trails the
+ * pointer by the move throttle plus a round-trip. Interpolating them anyway
+ * left a stale animation in flight, so releasing a card — which hands rendering
+ * back to this hook — snapped it to that stale point before sliding forward
+ * again. Pinning them to the authoritative position instead makes the handoff
+ * on release a no-op.
+ */
+export function useInterpolatedCardPositions(
+  cards: CardInstance[],
+  locallyDraggedIds: ReadonlySet<string> = NO_LOCAL_CARDS,
+): Record<string, Point> {
   const [positions, setPositions] = useState<Record<string, Point>>({});
   const positionsRef = useRef(positions);
   positionsRef.current = positions;
+  // Read through a ref so a drag starting or ending mid-animation takes effect
+  // on the next frame rather than waiting for the next patch.
+  const locallyDraggedRef = useRef(locallyDraggedIds);
+  locallyDraggedRef.current = locallyDraggedIds;
 
   useEffect(() => {
     const targets = Object.fromEntries(cards.map((card) => [card.id, { x: card.x, y: card.y }]));
     const starts = Object.fromEntries(
-      cards.map((card) => [card.id, positionsRef.current[card.id] ?? targets[card.id]!]),
+      cards.map((card) => [
+        card.id,
+        locallyDraggedRef.current.has(card.id)
+          ? targets[card.id]!
+          : positionsRef.current[card.id] ?? targets[card.id]!,
+      ]),
     );
     setPositions(starts);
 
@@ -33,7 +58,9 @@ export function useInterpolatedCardPositions(cards: CardInstance[]): Record<stri
         Object.fromEntries(
           cards.map((card) => [
             card.id,
-            interpolatePosition(starts[card.id]!, targets[card.id]!, progress),
+            locallyDraggedRef.current.has(card.id)
+              ? targets[card.id]!
+              : interpolatePosition(starts[card.id]!, targets[card.id]!, progress),
           ]),
         ),
       );
