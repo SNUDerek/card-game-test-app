@@ -14,7 +14,7 @@ interface CardProps {
   onDragMove?(cardId: string, position: Point): void;
   onDragEnd?(cardId: string, position: Point): void;
   onFlip?(cardId: string): void;
-  onContextMenu?(cardId: string, orientation: CardOrientation, position: Point): void;
+  onContextMenu?(cardId: string, position: Point): void;
   onBringToFront?(cardId: string): void;
 }
 
@@ -61,10 +61,7 @@ export function Card({
       onDblTap={() => onFlip?.(id)}
       onContextMenu={(event) => {
         event.evt.preventDefault();
-        onContextMenu?.(id, orientation, {
-          x: event.evt.clientX,
-          y: event.evt.clientY,
-        });
+        onContextMenu?.(id, { x: event.evt.clientX, y: event.evt.clientY });
       }}
       onClick={() => onBringToFront?.(id)}
       onTap={() => onBringToFront?.(id)}

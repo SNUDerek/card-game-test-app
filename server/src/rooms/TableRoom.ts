@@ -158,11 +158,14 @@ export class TableRoom extends Room<{ state: RoomState }> {
         throw error;
       }
     });
-    this.onMessage(TABLE_COMMANDS.DELETE_CARD, (_client, rawPayload) => {
+    this.onMessage(TABLE_COMMANDS.DELETE_CARD, (client, rawPayload) => {
       const parsed = CardIdPayloadSchema.safeParse(rawPayload);
       if (!parsed.success) throw new ServerError(400, "Invalid DELETE_CARD payload.");
+      const playerId = this.playerIdBySessionId.get(client.sessionId);
+      if (!playerId) throw new ServerError(403, "Player is not joined.");
+
       try {
-        deleteCard(this.state, parsed.data.cardId);
+        deleteCard(this.state, playerId, parsed.data.cardId, Date.now());
         return { deleted: true as const };
       } catch (error) {
         if (error instanceof DomainCommandError) throw new ServerError(409, error.message);

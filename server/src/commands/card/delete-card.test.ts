@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 import { CardInstanceState, ObjectLockState, RoomState } from "../../rooms/state/RoomState.js";
 import { deleteCard } from "./delete-card.js";
 
-function stateWithCard(stackId?: string) {
+const NOW = 5_000;
+
+interface StateOptions {
+  stackId?: string;
+  lockedBy?: string;
+  lockExpiresAt?: number;
+}
+
+function stateWithCard({ stackId, lockedBy, lockExpiresAt = 10_000 }: StateOptions = {}) {
   const state = new RoomState();
   state.cards.set(
     "card-1",
@@ -17,23 +25,33 @@ function stateWithCard(stackId?: string) {
       zIndex: 3,
     }),
   );
-  state.locks.set(
-    "card:card-1",
-    new ObjectLockState({
-      objectKind: "card",
-      objectId: "card-1",
-      playerId: "player-1",
-      expiresAt: 10_000,
-    }),
-  );
+  if (lockedBy) {
+    state.locks.set(
+      "card:card-1",
+      new ObjectLockState({
+        objectKind: "card",
+        objectId: "card-1",
+        playerId: lockedBy,
+        expiresAt: lockExpiresAt,
+      }),
+    );
+  }
   return state;
 }
 
 describe("deleteCard", () => {
-  it("deletes a standalone card and its obsolete lock", () => {
+  it("deletes an unclaimed standalone card", () => {
     const state = stateWithCard();
 
-    deleteCard(state, "card-1");
+    deleteCard(state, "player-1", "card-1", NOW);
+
+    expect(state.cards.has("card-1")).toBe(false);
+  });
+
+  it("deletes a card this player holds and drops its obsolete lock", () => {
+    const state = stateWithCard({ lockedBy: "player-1" });
+
+    deleteCard(state, "player-1", "card-1", NOW);
 
     expect(state.cards.has("card-1")).toBe(false);
     expect(state.locks.has("card:card-1")).toBe(false);
@@ -43,15 +61,34 @@ describe("deleteCard", () => {
     const state = stateWithCard();
     const before = state.toJSON();
 
-    expect(() => deleteCard(state, "missing")).toThrow("Unknown card");
+    expect(() => deleteCard(state, "player-1", "missing", NOW)).toThrow("Unknown card");
     expect(state.toJSON()).toEqual(before);
   });
 
   it("rejects a stacked card without partial mutation", () => {
-    const state = stateWithCard("stack-1");
+    const state = stateWithCard({ stackId: "stack-1" });
     const before = state.toJSON();
 
-    expect(() => deleteCard(state, "card-1")).toThrow("stack");
+    expect(() => deleteCard(state, "player-1", "card-1", NOW)).toThrow("stack");
     expect(state.toJSON()).toEqual(before);
+  });
+
+  it("rejects a card another player is holding, without mutation", () => {
+    const state = stateWithCard({ lockedBy: "player-2" });
+    const before = state.toJSON();
+
+    expect(() => deleteCard(state, "player-1", "card-1", NOW)).toThrow(
+      "claimed by another player",
+    );
+    expect(state.toJSON()).toEqual(before);
+  });
+
+  it("deletes a card whose other-player lock has already expired", () => {
+    const state = stateWithCard({ lockedBy: "player-2", lockExpiresAt: NOW - 1 });
+
+    deleteCard(state, "player-1", "card-1", NOW);
+
+    expect(state.cards.has("card-1")).toBe(false);
+    expect(state.locks.has("card:card-1")).toBe(false);
   });
 });

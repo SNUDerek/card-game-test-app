@@ -1,7 +1,7 @@
 import { Stage, Layer, Rect, Group } from "react-konva";
 import { useEffect, useRef, useState } from "react";
 import { Card, getCardOrientationAction } from "./Card";
-import type { CardDefinition, CardOrientation } from "@card-table/shared";
+import type { CardDefinition } from "@card-table/shared";
 import { DEFAULT_VIEWPORT, screenToWorld } from "./viewport";
 import { useCardCatalog } from "../features/card-browser/CardCatalogContext";
 import { CARD_DEFINITION_MIME_TYPE } from "../features/card-browser/CardBrowser";
@@ -17,12 +17,12 @@ export function Table() {
   const { cards, connectionError, spawnCard } = multiplayer;
   const interpolatedPositions = useInterpolatedCardPositions(cards);
   const drag = useCardDrag(multiplayer);
-  const [cardMenu, setCardMenu] = useState<{
-    cardId: string;
-    orientation: CardOrientation;
-    x: number;
-    y: number;
-  } | null>(null);
+  const [cardMenu, setCardMenu] = useState<{ cardId: string; x: number; y: number } | null>(
+    null,
+  );
+  // The menu acts on live card state, so it closes itself if the card is
+  // deleted or restacked by another player while it is open.
+  const menuCard = cardMenu ? cards.find((card) => card.id === cardMenu.cardId) : undefined;
 
   useEffect(() => {
     for (const card of cards) {
@@ -111,8 +111,8 @@ export function Table() {
                           console.warn("Card flip rejected:", cause);
                         });
                       }}
-                      onContextMenu={(cardId, orientation, position) => {
-                        setCardMenu({ cardId, orientation, ...position });
+                      onContextMenu={(cardId, position) => {
+                        setCardMenu({ cardId, ...position });
                       }}
                       onBringToFront={(cardId) => {
                         void multiplayer.bringToFront(cardId).catch((cause: unknown) => {
@@ -127,7 +127,7 @@ export function Table() {
         </Stage>
       )}
       {connectionError && <p className="tabletop-error">{connectionError}</p>}
-      {cardMenu && (
+      {cardMenu && menuCard && (
         <div
           className="card-context-menu"
           role="menu"
@@ -138,7 +138,7 @@ export function Table() {
             type="button"
             role="menuitem"
             onClick={() => {
-              const command = getCardOrientationAction(cardMenu.orientation) === "untap"
+              const command = getCardOrientationAction(menuCard.orientation) === "untap"
                 ? multiplayer.untapCard
                 : multiplayer.tapCard;
               void command(cardMenu.cardId).catch((cause: unknown) => {
@@ -147,7 +147,7 @@ export function Table() {
               setCardMenu(null);
             }}
           >
-            {cardMenu.orientation === "tapped" ? "Untap" : "Tap"}
+            {menuCard.orientation === "tapped" ? "Untap" : "Tap"}
           </button>
           <button
             type="button"

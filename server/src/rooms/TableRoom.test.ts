@@ -290,6 +290,31 @@ describe("TableRoom connection lifecycle", () => {
     expect(bob.state.toJSON()).toEqual(room.state.toJSON());
   });
 
+  it("refuses to delete a card another player is holding", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+      definitionId: "spell-1",
+      x: 0,
+      y: 0,
+    });
+    await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, {
+      object: { kind: "card", id: cardId },
+    });
+
+    await expect(bob.request(TABLE_COMMANDS.DELETE_CARD, { cardId })).rejects.toThrow(
+      "claimed by another player",
+    );
+    expect(room.state.cards.has(cardId)).toBe(true);
+
+    expect(await alice.request(TABLE_COMMANDS.DELETE_CARD, { cardId })).toEqual({
+      deleted: true,
+    });
+    expect(room.state.cards.size).toBe(0);
+    expect(room.state.locks.size).toBe(0);
+  });
+
   it("rejects invalid and unknown delete requests without mutation", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
     const alice = await colyseus.connectTo(room, { displayName: "Alice" });
