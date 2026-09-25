@@ -1,4 +1,15 @@
-/* CardBrowser.css */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .card-browser-toggle {
   position: fixed;
   bottom: 24px;
@@ -29,7 +40,7 @@
   top: 40px;
   right: 40px;
   bottom: 80px;
-  width: 450px;
+  width: min(450px, calc(100vw - 32px));
   z-index: 999;
   background: rgba(15, 23, 42, 0.85);
   backdrop-filter: blur(16px);
@@ -118,6 +129,18 @@
   gap: 16px;
 }
 
+.card-browser-status {
+  grid-column: 1 / -1;
+  align-self: start;
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 14px;
+}
+
+.card-browser-error {
+  color: #fca5a5;
+}
+
 .card-browser-grid::-webkit-scrollbar {
   width: 6px;
 }
@@ -148,8 +171,9 @@
 
 .card-image {
   width: 100%;
-  aspect-ratio: 2.5 / 3.5;
-  object-fit: cover;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.2);
   image-rendering: pixelated; /* per MVP spec: nearest-neighbor scaling */
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
@@ -191,4 +215,32 @@
   color: #475569;
   margin-top: auto;
   padding-top: 8px;
+}
+
+@media (max-width: 560px) {
+  .card-browser-panel {
+    top: 16px;
+    right: 16px;
+    bottom: 80px;
+  }
+
+  .card-browser-header,
+  .card-browser-grid {
+    padding: 16px;
+  }
+
+  .card-browser-controls {
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-browser-panel {
+    animation: none;
+  }
+
+  .card-browser-toggle,
+  .card-browser-item {
+    transition: none;
+  }
 }

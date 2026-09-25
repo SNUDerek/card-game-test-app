@@ -11,4 +11,5 @@ RUN npm run build -w @card-table/shared && npm run build -w @card-table/client
 
 FROM nginx:alpine
 COPY --from=build /app/client/dist /usr/share/nginx/html
+COPY client/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
