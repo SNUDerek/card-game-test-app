@@ -97,6 +97,15 @@ export class TableRoom extends Room<{ state: RoomState }> {
    * structural validation, a joined player, and domain errors mapped to a
    * status. Registering through this is what keeps any single handler from
    * quietly skipping one of them.
+   *
+   * A rejection can only be delivered to a client that asked for one. Commands
+   * sent fire-and-forget (`room.send`, used for throttled movement and for
+   * hover) carry no request id, and Colyseus does not wrap message handlers
+   * unless the room defines `onUncaughtException` -- which this room must not
+   * do, because that wrapper also swallows errors on the request path and would
+   * turn every rejection into a silent success. So on the fire-and-forget path
+   * the error is logged and dropped here; letting it escape tears down the room
+   * for everyone over one stale message.
    */
   private command<Schema extends z.ZodType>(
     name: string,
@@ -104,22 +113,33 @@ export class TableRoom extends Room<{ state: RoomState }> {
     run: (context: CommandContext, payload: z.infer<Schema>) => unknown,
     rejectionStatus = 409,
   ): void {
-    this.onMessage(name, (client, rawPayload) => {
+    this.onMessage(name, (client, rawPayload, context) => {
+      // Present only when the client is awaiting a reply; see DispatchContext
+      // vs SEND_CONTEXT in @colyseus/core.
+      const awaitingReply = context?.id !== undefined;
+
+      const fail = (error: ServerError): undefined => {
+        if (awaitingReply) throw error;
+        console.warn(`${name} rejected for ${client.sessionId}: ${error.message}`);
+        return undefined;
+      };
+
       const now = Date.now();
       if (!this.rateLimiter.tryConsume(client.sessionId, now)) {
-        throw new ServerError(429, "Too many commands; slow down.");
+        return fail(new ServerError(429, "Too many commands; slow down."));
       }
       const parsed = schema.safeParse(rawPayload);
-      if (!parsed.success) throw new ServerError(400, `Invalid ${name} payload.`);
+      if (!parsed.success) return fail(new ServerError(400, `Invalid ${name} payload.`));
       const playerId = this.playerIdBySessionId.get(client.sessionId);
-      if (!playerId) throw new ServerError(403, "Player is not joined.");
+      if (!playerId) return fail(new ServerError(403, "Player is not joined."));
 
       try {
         return run({ playerId, now }, parsed.data);
       } catch (error) {
         if (error instanceof DomainCommandError) {
-          throw new ServerError(rejectionStatus, error.message);
+          return fail(new ServerError(rejectionStatus, error.message));
         }
+        // Not a domain rejection: a real fault, which should surface.
         throw error;
       }
     });

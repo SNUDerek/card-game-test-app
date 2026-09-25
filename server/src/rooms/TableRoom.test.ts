@@ -453,4 +453,94 @@ describe("TableRoom connection lifecycle", () => {
     expect(room.state.cards.size).toBe(accepted.length);
     expect(alice.state.toJSON()).toEqual(room.state.toJSON());
   });
+
+  // Fire-and-forget commands carry no request id, so there is nobody to reject
+  // to. An escaping error is not delivered -- it tears the room down and drops
+  // every player, which is how a single stale message used to end a session.
+  describe("commands sent without awaiting a reply", () => {
+    it("survives a hover naming a card that was just deleted", async () => {
+      const room = await colyseus.createRoom<TableRoom>("table", {
+        cardDefinitionIds: ["spell-1"],
+      });
+      const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+      const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+
+      const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+        definitionId: "spell-1",
+        x: 0,
+        y: 0,
+      });
+      alice.send(TABLE_COMMANDS.SET_HOVER, { cardId });
+      await room.waitForNextPatch();
+      await bob.request(TABLE_COMMANDS.DELETE_CARD, { cardId });
+
+      // The hover Alice already reported now names a card that is gone.
+      alice.send(TABLE_COMMANDS.SET_HOVER, { cardId });
+      await room.waitForNextPatch();
+
+      expect(room.state.cards.size).toBe(0);
+      expect(room.state.players.size).toBe(2);
+      for (const player of room.state.players.values()) {
+        expect(player.hoveredCardId).toBeUndefined();
+      }
+      // Still live: the room answers a fresh command from each client.
+      await expect(
+        alice.request(TABLE_COMMANDS.SPAWN_CARD, { definitionId: "spell-1", x: 5, y: 5 }),
+      ).resolves.toMatchObject({ cardId: expect.any(String) });
+      expect(bob.connection.isOpen).toBe(true);
+    });
+
+    it("survives a rejected move of a card another player holds", async () => {
+      const room = await colyseus.createRoom<TableRoom>("table", {
+        cardDefinitionIds: ["spell-1"],
+      });
+      const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+      const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+
+      const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+        definitionId: "spell-1",
+        x: 0,
+        y: 0,
+      });
+      await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, {
+        object: { kind: "card", id: cardId },
+      });
+
+      // Throttled drag updates are sent this way, so a drag racing another
+      // player's claim reaches the server with no reply to reject to.
+      bob.send(TABLE_COMMANDS.MOVE_CARD, { cardId, x: 999, y: 999 });
+      await room.waitForNextPatch();
+
+      expect(room.state.cards.get(cardId)).toMatchObject({ x: 0, y: 0 });
+      expect(room.state.players.size).toBe(2);
+      // Liveness has to be proven by a round-trip: room.state and the socket
+      // flags still read fine for a moment after the room has been torn down.
+      await expect(
+        bob.request(TABLE_COMMANDS.SPAWN_CARD, { definitionId: "spell-1", x: 5, y: 5 }),
+      ).resolves.toMatchObject({ cardId: expect.any(String) });
+    });
+
+    it("still rejects to a client that does await a reply", async () => {
+      const room = await colyseus.createRoom<TableRoom>("table", {
+        cardDefinitionIds: ["spell-1"],
+      });
+      const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+      const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+
+      const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+        definitionId: "spell-1",
+        x: 0,
+        y: 0,
+      });
+      await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, {
+        object: { kind: "card", id: cardId },
+      });
+
+      // Dropping errors on the fire-and-forget path must not have made the
+      // request path silently succeed.
+      await expect(
+        bob.request(TABLE_COMMANDS.MOVE_CARD, { cardId, x: 999, y: 999 }),
+      ).rejects.toThrow("must be claimed by this player");
+    });
+  });
 });

@@ -41,9 +41,13 @@ describe("setPlayerHover", () => {
     expect(state.locks.size).toBe(0);
   });
 
-  it("refuses to store a hover of a card that does not exist", () => {
+  it("treats a hover of a vanished card as hovering nothing, not as an error", () => {
     const state = stateWithPlayers();
-    expect(() => setPlayerHover(state, "alice", "ghost")).toThrow("Unknown card");
+    setPlayerHover(state, "alice", "card-1");
+
+    // A hover and a delete crossing on the wire is routine, and this command
+    // is fire-and-forget: throwing here used to take the whole room down.
+    expect(setPlayerHover(state, "alice", "ghost")).toBe(false);
     expect(state.players.get("alice")!.hoveredCardId).toBeUndefined();
   });
 
