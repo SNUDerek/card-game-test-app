@@ -1,4 +1,4 @@
-import { Client, type Room } from "@colyseus/sdk";
+import { Client } from "@colyseus/sdk";
 import {
   createContext,
   useCallback,
@@ -12,35 +12,14 @@ import {
 import type {
   CardInstance,
   CardStack,
-  ClaimObjectResult,
-  SpawnCardPayload,
-  MoveCardPayload,
-  TableObjectRef,
-  StackCardPayload,
-  MoveStackPayload,
-  DrawCardPayload,
   Player,
   PlayerId,
   RoomId,
 } from "@card-table/shared";
-import {
-  claimObject as sendClaimObject,
-  releaseObject as sendReleaseObject,
-  moveCard as sendMoveCard,
-  spawnCard as sendSpawnCard,
-  flipCard as sendFlipCard,
-  tapCard as sendTapCard,
-  untapCard as sendUntapCard,
-  bringToFront as sendBringToFront,
-  deleteCard as sendDeleteCard,
-  requestSession,
-  stackCard as sendStackCard,
-  moveStack as sendMoveStack,
-  drawCard as sendDrawCard,
-  deleteStack as sendDeleteStack,
-} from "./commands";
+import { requestSession } from "./commands";
 import type { ClientRoomState, TableRoom } from "./room";
 import { useRoomSync } from "./useRoomSync";
+import { useTableCommands, type TableCommands } from "./useTableCommands";
 import {
   clearStoredSession,
   describeConnectionError,
@@ -61,7 +40,7 @@ export interface JoinRoomRequest extends CreateRoomRequest {
   roomId: RoomId;
 }
 
-interface MultiplayerValue {
+interface MultiplayerValue extends TableCommands {
   status: ConnectionStatus;
   roomId: RoomId | null;
   /** Room id from the shared URL, present before this client has joined. */
@@ -75,19 +54,6 @@ interface MultiplayerValue {
   createRoom(request: CreateRoomRequest): Promise<void>;
   joinRoom(request: JoinRoomRequest): Promise<void>;
   leaveRoom(): Promise<void>;
-  spawnCard(payload: SpawnCardPayload): Promise<void>;
-  claimObject(object: TableObjectRef): Promise<ClaimObjectResult>;
-  releaseObject(object: TableObjectRef): Promise<void>;
-  moveCard(payload: MoveCardPayload, confirmed?: boolean): Promise<void>;
-  flipCard(cardId: string): Promise<void>;
-  tapCard(cardId: string): Promise<void>;
-  untapCard(cardId: string): Promise<void>;
-  bringToFront(cardId: string): Promise<void>;
-  deleteCard(cardId: string): Promise<void>;
-  stackCard(payload: StackCardPayload): Promise<void>;
-  moveStack(payload: MoveStackPayload, confirmed?: boolean): Promise<void>;
-  drawCard(payload: DrawCardPayload): Promise<void>;
-  deleteStack(stackId: string): Promise<void>;
 }
 
 const MultiplayerContext = createContext<MultiplayerValue | null>(null);
@@ -109,6 +75,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
   const [selfPlayerId, setSelfPlayerId] = useState<PlayerId | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const { players, cards, stacks, hostPlayerId, syncRoom, resetSync } = useRoomSync();
+  const commands = useTableCommands(roomRef);
 
   const resetSession = useCallback(() => {
     roomRef.current = null;
@@ -224,14 +191,9 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     };
   }, [attachRoom, client]);
 
-  const withRoom = useCallback(<T,>(send: (room: Room<any, ClientRoomState>) => Promise<T>) => {
-    const room = roomRef.current;
-    if (!room) return Promise.reject(new Error("The tabletop is not connected yet."));
-    return send(room);
-  }, []);
-
   const value = useMemo<MultiplayerValue>(
     () => ({
+      ...commands,
       status,
       roomId,
       invitedRoomId,
@@ -244,30 +206,9 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       createRoom,
       joinRoom,
       leaveRoom,
-      spawnCard: (payload) => withRoom(async (room) => void (await sendSpawnCard(room, payload))),
-      claimObject: (object) => withRoom((room) => sendClaimObject(room, { object })),
-      releaseObject: (object) =>
-        withRoom(async (room) => void (await sendReleaseObject(room, { object }))),
-      moveCard: (payload, confirmed = false) =>
-        withRoom(async (room) => void (await sendMoveCard(room, payload, confirmed))),
-      flipCard: (cardId) => withRoom(async (room) => void (await sendFlipCard(room, { cardId }))),
-      tapCard: (cardId) => withRoom(async (room) => void (await sendTapCard(room, { cardId }))),
-      untapCard: (cardId) =>
-        withRoom(async (room) => void (await sendUntapCard(room, { cardId }))),
-      bringToFront: (cardId) =>
-        withRoom(async (room) => void (await sendBringToFront(room, { cardId }))),
-      deleteCard: (cardId) =>
-        withRoom(async (room) => void (await sendDeleteCard(room, { cardId }))),
-      stackCard: (payload) =>
-        withRoom(async (room) => void (await sendStackCard(room, payload))),
-      moveStack: (payload, confirmed = false) =>
-        withRoom(async (room) => void (await sendMoveStack(room, payload, confirmed))),
-      drawCard: (payload) =>
-        withRoom(async (room) => void (await sendDrawCard(room, payload))),
-      deleteStack: (stackId) =>
-        withRoom(async (room) => void (await sendDeleteStack(room, { stackId }))),
     }),
     [
+      commands,
       status,
       roomId,
       invitedRoomId,
@@ -280,7 +221,6 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       createRoom,
       joinRoom,
       leaveRoom,
-      withRoom,
     ],
   );
 
