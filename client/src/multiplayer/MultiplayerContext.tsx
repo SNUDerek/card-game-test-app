@@ -20,6 +20,9 @@ import {
   releaseObject as sendReleaseObject,
   moveCard as sendMoveCard,
   spawnCard as sendSpawnCard,
+  flipCard as sendFlipCard,
+  tapCard as sendTapCard,
+  untapCard as sendUntapCard,
 } from "./commands";
 
 interface ClientRoomState {
@@ -33,6 +36,9 @@ interface MultiplayerValue {
   claimObject(object: TableObjectRef): Promise<ClaimObjectResult>;
   releaseObject(object: TableObjectRef): Promise<void>;
   moveCard(payload: MoveCardPayload, confirmed?: boolean): Promise<void>;
+  flipCard(cardId: string): Promise<void>;
+  tapCard(cardId: string): Promise<void>;
+  untapCard(cardId: string): Promise<void>;
 }
 
 const MultiplayerContext = createContext<MultiplayerValue | null>(null);
@@ -135,9 +141,53 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     [room],
   );
 
+  const flipCard = useCallback(
+    async (cardId: string) => {
+      if (!room) throw new Error("The tabletop is not connected yet.");
+      await sendFlipCard(room, { cardId });
+    },
+    [room],
+  );
+
+  const tapCard = useCallback(
+    async (cardId: string) => {
+      if (!room) throw new Error("The tabletop is not connected yet.");
+      await sendTapCard(room, { cardId });
+    },
+    [room],
+  );
+
+  const untapCard = useCallback(
+    async (cardId: string) => {
+      if (!room) throw new Error("The tabletop is not connected yet.");
+      await sendUntapCard(room, { cardId });
+    },
+    [room],
+  );
+
   const value = useMemo(
-    () => ({ cards, connectionError, spawnCard, claimObject, releaseObject, moveCard }),
-    [cards, connectionError, spawnCard, claimObject, releaseObject, moveCard],
+    () => ({
+      cards,
+      connectionError,
+      spawnCard,
+      claimObject,
+      releaseObject,
+      moveCard,
+      flipCard,
+      tapCard,
+      untapCard,
+    }),
+    [
+      cards,
+      connectionError,
+      spawnCard,
+      claimObject,
+      releaseObject,
+      moveCard,
+      flipCard,
+      tapCard,
+      untapCard,
+    ],
   );
 
   return <MultiplayerContext.Provider value={value}>{children}</MultiplayerContext.Provider>;

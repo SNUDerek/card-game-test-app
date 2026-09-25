@@ -5,6 +5,7 @@ import {
   ClaimObjectPayloadSchema,
   ReleaseObjectPayloadSchema,
   MoveCardPayloadSchema,
+  CardIdPayloadSchema,
   SpawnCardPayloadSchema,
   TABLE_COMMANDS,
   type JoinRoomOptions,
@@ -20,6 +21,9 @@ import {
   releasePlayerLocks,
 } from "../commands/player/object-locks.js";
 import { moveCard } from "../commands/card/move-card.js";
+import { flipCard } from "../commands/card/flip-card.js";
+import { tapCard } from "../commands/card/tap-card.js";
+import { untapCard } from "../commands/card/untap-card.js";
 
 export interface TableRoomOptions {
   cardDefinitionIds?: string[];
@@ -104,6 +108,36 @@ export class TableRoom extends Room<{ state: RoomState }> {
       try {
         moveCard(this.state, playerId, parsed.data, Date.now(), this.lockTimeoutMs);
         return { moved: true as const };
+      } catch (error) {
+        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
+        throw error;
+      }
+    });
+    this.onMessage(TABLE_COMMANDS.FLIP_CARD, (_client, rawPayload) => {
+      const parsed = CardIdPayloadSchema.safeParse(rawPayload);
+      if (!parsed.success) throw new ServerError(400, "Invalid FLIP_CARD payload.");
+      try {
+        return { face: flipCard(this.state, parsed.data.cardId) };
+      } catch (error) {
+        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
+        throw error;
+      }
+    });
+    this.onMessage(TABLE_COMMANDS.TAP_CARD, (_client, rawPayload) => {
+      const parsed = CardIdPayloadSchema.safeParse(rawPayload);
+      if (!parsed.success) throw new ServerError(400, "Invalid TAP_CARD payload.");
+      try {
+        return { orientation: tapCard(this.state, parsed.data.cardId) };
+      } catch (error) {
+        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
+        throw error;
+      }
+    });
+    this.onMessage(TABLE_COMMANDS.UNTAP_CARD, (_client, rawPayload) => {
+      const parsed = CardIdPayloadSchema.safeParse(rawPayload);
+      if (!parsed.success) throw new ServerError(400, "Invalid UNTAP_CARD payload.");
+      try {
+        return { orientation: untapCard(this.state, parsed.data.cardId) };
       } catch (error) {
         if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
         throw error;

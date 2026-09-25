@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CARD_HEIGHT, CARD_WIDTH } from "../cards/CardRenderer";
-import { getCardTransform } from "./Card";
+import { getCardOrientationAction, getCardTransform } from "./Card";
 
 describe("card transforms", () => {
   it.each([
@@ -12,5 +12,12 @@ describe("card transforms", () => {
       offsetX: CARD_WIDTH / 2,
       offsetY: CARD_HEIGHT / 2,
     });
+  });
+});
+
+describe("card orientation interactions", () => {
+  it("selects the idempotent command that toggles the current orientation", () => {
+    expect(getCardOrientationAction("upright")).toBe("tap");
+    expect(getCardOrientationAction("tapped")).toBe("untap");
   });
 });

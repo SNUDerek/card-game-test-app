@@ -13,6 +13,8 @@ interface CardProps {
   onDragStart?(cardId: string, position: Point): void;
   onDragMove?(cardId: string, position: Point): void;
   onDragEnd?(cardId: string, position: Point): void;
+  onFlip?(cardId: string): void;
+  onToggleTap?(cardId: string, orientation: CardOrientation): void;
 }
 
 export function getCardTransform(orientation: CardOrientation) {
@@ -21,6 +23,10 @@ export function getCardTransform(orientation: CardOrientation) {
     offsetX: CARD_WIDTH / 2,
     offsetY: CARD_HEIGHT / 2,
   } as const;
+}
+
+export function getCardOrientationAction(orientation: CardOrientation): "tap" | "untap" {
+  return orientation === "tapped" ? "untap" : "tap";
 }
 
 export function Card({
@@ -33,6 +39,8 @@ export function Card({
   onDragStart,
   onDragMove,
   onDragEnd,
+  onFlip,
+  onToggleTap,
 }: CardProps) {
   const transform = getCardTransform(orientation);
 
@@ -47,6 +55,12 @@ export function Card({
       onDragStart={() => onDragStart?.(id, { x, y })}
       onDragMove={(event) => onDragMove?.(id, event.target.position())}
       onDragEnd={(event) => onDragEnd?.(id, event.target.position())}
+      onDblClick={() => onFlip?.(id)}
+      onDblTap={() => onFlip?.(id)}
+      onContextMenu={(event) => {
+        event.evt.preventDefault();
+        onToggleTap?.(id, orientation);
+      }}
     >
       <CardRenderer definition={definition} face={face} />
     </Group>

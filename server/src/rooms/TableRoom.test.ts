@@ -183,4 +183,44 @@ describe("TableRoom connection lifecycle", () => {
     expect(alice.state.toJSON()).toEqual(room.state.toJSON());
     expect(bob.state.toJSON()).toEqual(room.state.toJSON());
   });
+
+  it("synchronizes flip, tap, and untap across clients", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+      definitionId: "spell-1",
+      x: 0,
+      y: 0,
+    });
+
+    expect(await alice.request(TABLE_COMMANDS.FLIP_CARD, { cardId })).toEqual({ face: "back" });
+    expect(await alice.request(TABLE_COMMANDS.TAP_CARD, { cardId })).toEqual({
+      orientation: "tapped",
+    });
+    expect(await alice.request(TABLE_COMMANDS.TAP_CARD, { cardId })).toEqual({
+      orientation: "tapped",
+    });
+    expect(await alice.request(TABLE_COMMANDS.UNTAP_CARD, { cardId })).toEqual({
+      orientation: "upright",
+    });
+    await room.waitForNextPatch();
+
+    expect(room.state.cards.get(cardId)).toMatchObject({ face: "back", orientation: "upright" });
+    expect(alice.state.toJSON()).toEqual(room.state.toJSON());
+    expect(bob.state.toJSON()).toEqual(room.state.toJSON());
+  });
+
+  it("rejects invalid card-state command payloads without mutation", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+
+    await expect(alice.request(TABLE_COMMANDS.FLIP_CARD, {})).rejects.toThrow(
+      "Invalid FLIP_CARD payload",
+    );
+    await expect(alice.request(TABLE_COMMANDS.TAP_CARD, { cardId: "missing" })).rejects.toThrow(
+      "Unknown card",
+    );
+    expect(room.state.cards.size).toBe(0);
+  });
 });

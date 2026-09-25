@@ -1,6 +1,6 @@
 import { Stage, Layer, Rect, Group } from "react-konva";
 import { useEffect, useRef, useState } from "react";
-import { Card } from "./Card";
+import { Card, getCardOrientationAction } from "./Card";
 import type { CardDefinition } from "@card-table/shared";
 import { DEFAULT_VIEWPORT, screenToWorld } from "./viewport";
 import { useCardCatalog } from "../features/card-browser/CardCatalogContext";
@@ -98,6 +98,19 @@ export function Table() {
                       onDragMove={drag.moveDrag}
                       onDragEnd={(cardId, nextPosition) => {
                         void drag.endDrag(cardId, nextPosition);
+                      }}
+                      onFlip={(cardId) => {
+                        void multiplayer.flipCard(cardId).catch((cause: unknown) => {
+                          console.warn("Card flip rejected:", cause);
+                        });
+                      }}
+                      onToggleTap={(cardId, orientation) => {
+                        const command = getCardOrientationAction(orientation) === "untap"
+                          ? multiplayer.untapCard
+                          : multiplayer.tapCard;
+                        void command(cardId).catch((cause: unknown) => {
+                          console.warn("Card orientation change rejected:", cause);
+                        });
                       }}
                     />
                   );
