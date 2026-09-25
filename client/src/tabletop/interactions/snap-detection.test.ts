@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CardInstance, CardStack } from "@card-table/shared";
-import { findStackTarget } from "./snap-detection";
+import { findStackTarget, resolveStackTarget } from "./snap-detection";
 
 const card = (id: string, x: number, y: number): CardInstance => ({
   id, definitionId: id, face: "front", orientation: "upright", x, y, zIndex: 0,
@@ -28,5 +28,22 @@ describe("findStackTarget", () => {
     source.face = "back";
     expect(findStackTarget("source", { x: 100, y: 100 }, [source, card("target", 100, 100)], []))
       .toBeNull();
+  });
+});
+
+describe("resolveStackTarget", () => {
+  it("resolves card and stack references to live objects", () => {
+    const targetCard = card("target", 100, 100);
+    const stack: CardStack = { id: "stack-1", x: 50, y: 60, cardIds: ["a", "b"], zIndex: 2 };
+
+    expect(resolveStackTarget({ kind: "card", cardId: targetCard.id }, [targetCard], [stack]))
+      .toEqual({ kind: "card", card: targetCard });
+    expect(resolveStackTarget({ kind: "stack", stackId: stack.id }, [targetCard], [stack]))
+      .toEqual({ kind: "stack", stack });
+  });
+
+  it("returns null when the target no longer exists", () => {
+    expect(resolveStackTarget({ kind: "card", cardId: "missing" }, [], [])).toBeNull();
+    expect(resolveStackTarget(null, [], [])).toBeNull();
   });
 });

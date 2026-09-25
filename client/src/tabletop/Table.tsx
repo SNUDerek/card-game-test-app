@@ -11,11 +11,10 @@ import { useInterpolatedCardPositions } from "./interactions/interpolation";
 import { getPreviewSide, MagnifyPreview } from "../features/tabletop/MagnifyPreview";
 import { useLocalUiState } from "../state/local-ui-state";
 import { Stack } from "./Stack";
-import { findStackTarget } from "./interactions/snap-detection";
+import { findStackTarget, resolveStackTarget, STACK_OFFSET } from "./interactions/snap-detection";
 import { useStackDrag } from "./interactions/stack-drag";
-import { CARD_HEIGHT, CARD_WIDTH } from "../cards/CardRenderer";
-import { STACK_OFFSET } from "./interactions/snap-detection";
 import { TableContextMenu, type CardMenuState } from "./TableContextMenu";
+import { SnapTargetOutline } from "./SnapTargetOutline";
 
 export function Table() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -40,6 +39,10 @@ export function Table() {
       ? findStackTarget(drag.activeDrag.cardId, drag.activeDrag.position, cards, stacks)
       : null;
   }, [cards, drag.activeDrag, stacks]);
+  const resolvedSnapTarget = useMemo(
+    () => resolveStackTarget(snapTarget, cards, stacks),
+    [cards, snapTarget, stacks],
+  );
 
   const magnified = useMemo(() => {
     const card = cards.find((candidate) => candidate.id === magnifiedCardId);
@@ -177,20 +180,7 @@ export function Table() {
                     />
                   );
                 })}
-              {snapTarget && (() => {
-                const target = snapTarget.kind === "card"
-                  ? cards.find((card) => card.id === snapTarget.cardId)
-                  : stacks.find((stack) => stack.id === snapTarget.stackId);
-                if (!target) return null;
-                const count = "cardIds" in target ? target.cardIds.length - 1 : 0;
-                return <Rect
-                  x={target.x + count * STACK_OFFSET - CARD_WIDTH / 2 - 4}
-                  y={target.y + count * STACK_OFFSET - CARD_HEIGHT / 2 - 4}
-                  width={CARD_WIDTH + 8} height={CARD_HEIGHT + 8}
-                  stroke="#facc15" strokeWidth={4} cornerRadius={10}
-                  listening={false}
-                />;
-              })()}
+              {resolvedSnapTarget && <SnapTargetOutline target={resolvedSnapTarget} />}
             </Group>
           </Layer>
         </Stage>
