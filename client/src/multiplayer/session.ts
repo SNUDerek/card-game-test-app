@@ -36,3 +36,45 @@ export function describeConnectionError(cause: unknown): string {
   if (/display name/i.test(message)) return message;
   return "Could not reach the tabletop server.";
 }
+
+const STORAGE_KEY = "card-table-session";
+
+/**
+ * Enough to resume a room after a reload. The reconnection token is
+ * short-lived and scoped to one seat, so it lives in sessionStorage and is
+ * cleared as soon as the server refuses it or the player leaves on purpose.
+ */
+export interface StoredSession {
+  roomId: RoomId;
+  reconnectionToken: string;
+}
+
+export function storeSession(session: StoredSession): void {
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+}
+
+export function clearStoredSession(): void {
+  sessionStorage.removeItem(STORAGE_KEY);
+}
+
+/** Returns the stored session only when it belongs to the requested room. */
+export function readStoredSession(roomId: RoomId | null): StoredSession | null {
+  const raw = sessionStorage.getItem(STORAGE_KEY);
+  if (!raw || !roomId) return null;
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      typeof (parsed as StoredSession).roomId !== "string" ||
+      typeof (parsed as StoredSession).reconnectionToken !== "string"
+    ) {
+      return null;
+    }
+    const session = parsed as StoredSession;
+    return session.roomId === roomId ? session : null;
+  } catch {
+    return null;
+  }
+}

@@ -1,7 +1,18 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom } from "colyseus";
+import { ROOM_COMMANDS, TABLE_COMMANDS, type SessionResult } from "@card-table/shared";
 import { TableRoom } from "./TableRoom.js";
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Asks the room which PlayerId this connection belongs to. */
+async function sessionPlayerId(room: {
+  request: (type: string) => Promise<SessionResult>;
+}): Promise<string> {
+  const { playerId } = await room.request(ROOM_COMMANDS.SESSION);
+  return playerId;
+}
 
 describe("TableRoom sessions", () => {
   let colyseus: ColyseusTestServer;
@@ -83,5 +94,97 @@ describe("TableRoom sessions", () => {
     const outsider = await colyseus.sdk.joinOrCreate("table", { displayName: "Mallory" });
 
     expect(outsider.roomId).not.toBe(first.roomId);
+  });
+
+  it("restores the same player identity after an unconsented drop", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table", {
+      reconnectionGraceSeconds: 5,
+    });
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    await colyseus.connectTo(room, { displayName: "Bob" });
+    const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+      definitionId: "spell-1",
+      x: 0,
+      y: 0,
+    });
+    await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, {
+      object: { kind: "card", id: cardId },
+    });
+    const playerId = [...room.state.players.values()].find(
+      (player) => player.displayName === "Alice",
+    )?.id as string;
+    const reconnectionToken = alice.reconnectionToken;
+
+    await alice.leave(false);
+    await room.waitForNextPatch();
+
+    // The seat is held, but the lock is not (data-models.md §51).
+    expect(room.state.players.size).toBe(2);
+    expect(room.state.players.get(playerId)?.connected).toBe(false);
+    expect(room.state.locks.size).toBe(0);
+    expect(room.state.cards.size).toBe(1);
+
+    const rejoined = await colyseus.sdk.reconnect(reconnectionToken);
+    await room.waitForNextPatch();
+
+    expect(room.state.players.size).toBe(2);
+    const restored = room.state.players.get(playerId);
+    expect(restored?.connected).toBe(true);
+    expect(restored?.displayName).toBe("Alice");
+    expect(rejoined.state.players.get(playerId)?.displayName).toBe("Alice");
+  });
+
+  it("removes a dropped player once the grace period expires", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table", {
+      reconnectionGraceSeconds: 0.2,
+    });
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    await colyseus.connectTo(room, { displayName: "Bob" });
+    const reconnectionToken = alice.reconnectionToken;
+
+    alice.reconnection.enabled = false;
+    await alice.leave(false);
+    await room.waitForNextPatch();
+    expect(room.state.players.size).toBe(2);
+
+    await wait(400);
+    await room.waitForNextPatch();
+
+    expect(room.state.players.size).toBe(1);
+    expect([...room.state.players.values()][0]?.displayName).toBe("Bob");
+    await expect(colyseus.sdk.reconnect(reconnectionToken)).rejects.toThrow();
+  });
+
+  it("gives up a dropped player's identity immediately on a consented leave", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table", {
+      reconnectionGraceSeconds: 5,
+    });
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    await colyseus.connectTo(room, { displayName: "Bob" });
+    const reconnectionToken = alice.reconnectionToken;
+
+    await alice.leave();
+    await room.waitForNextPatch();
+
+    expect(room.state.players.size).toBe(1);
+    await expect(colyseus.sdk.reconnect(reconnectionToken)).rejects.toThrow();
+  });
+
+  it("tells each client which synchronized player it is, on join and on reconnect", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table", {
+      reconnectionGraceSeconds: 5,
+    });
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const playerId = await sessionPlayerId(alice);
+    await room.waitForNextPatch();
+
+    expect(room.state.players.get(playerId)?.displayName).toBe("Alice");
+    expect(playerId).not.toBe(alice.sessionId);
+
+    const reconnectionToken = alice.reconnectionToken;
+    await alice.leave(false);
+    const rejoined = await colyseus.sdk.reconnect(reconnectionToken);
+
+    expect(await sessionPlayerId(rejoined)).toBe(playerId);
   });
 });

@@ -10,14 +10,12 @@ import {
   type ReactNode,
 } from "react";
 import {
-  ROOM_EVENTS,
   type CardInstance,
   type ClaimObjectResult,
   type MoveCardPayload,
   type Player,
   type PlayerId,
   type RoomId,
-  type SessionEvent,
   type SpawnCardPayload,
   type TableObjectRef,
 } from "@card-table/shared";
@@ -31,8 +29,16 @@ import {
   untapCard as sendUntapCard,
   bringToFront as sendBringToFront,
   deleteCard as sendDeleteCard,
+  requestSession,
 } from "./commands";
-import { describeConnectionError, parseRoomIdFromPath, roomPath } from "./session";
+import {
+  clearStoredSession,
+  describeConnectionError,
+  parseRoomIdFromPath,
+  readStoredSession,
+  roomPath,
+  storeSession,
+} from "./session";
 
 interface ClientRoomState {
   cards: Map<string, CardInstance>;
@@ -137,21 +143,31 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
         setHostPlayerId(state.hostPlayerId);
       };
 
-      room.onMessage(ROOM_EVENTS.SESSION, (session: SessionEvent) => {
-        setSelfPlayerId(session.playerId);
-      });
       syncState(room.state);
       room.onStateChange(syncState);
       room.onLeave(() => {
         if (roomRef.current !== room) return;
+        // The seat is gone for good by now: the SDK retries transient drops on
+        // its own, and a reload would be refused the stale token anyway.
+        clearStoredSession();
         setConnectionError("Disconnected from the tabletop server.");
         resetSession();
       });
+
+      // PlayerIds are server-generated, so ask which player this connection is.
+      void requestSession(room)
+        .then(({ playerId }) => {
+          if (roomRef.current === room) setSelfPlayerId(playerId);
+        })
+        .catch((cause: unknown) => {
+          console.warn("Could not resolve this player's identity:", cause);
+        });
 
       setRoomId(room.roomId);
       setInvitedRoomId(room.roomId);
       setStatus("connected");
       setConnectionError(null);
+      storeSession({ roomId: room.roomId, reconnectionToken: room.reconnectionToken });
       window.history.pushState({}, "", roomPath(room.roomId));
     },
     [resetSession],
@@ -190,12 +206,41 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
   const leaveRoom = useCallback(async () => {
     const room = roomRef.current;
     roomRef.current = null;
+    clearStoredSession();
     resetSession();
     setInvitedRoomId(null);
     setConnectionError(null);
     window.history.pushState({}, "", "/");
     if (room) await room.leave();
   }, [resetSession]);
+
+  // A reload lands back on /room/<id> with the seat still reserved during the
+  // server's grace period, so resume it before showing the lobby.
+  useEffect(() => {
+    const stored = readStoredSession(parseRoomIdFromPath(window.location.pathname));
+    if (!stored) return;
+
+    let active = true;
+    setStatus("connecting");
+    void client
+      .reconnect<ClientRoomState>(stored.reconnectionToken)
+      .then((room) => {
+        if (!active) {
+          void room.leave();
+          return;
+        }
+        attachRoom(room);
+      })
+      .catch(() => {
+        if (!active) return;
+        clearStoredSession();
+        setStatus("disconnected");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [attachRoom, client]);
 
   useEffect(
     () => () => {
