@@ -20,7 +20,7 @@ import { useStackDrag } from "./interactions/stack-drag";
 import { TableContextMenu, type CardMenuState } from "./TableContextMenu";
 import { SnapTargetOutline } from "./SnapTargetOutline";
 import { HoverAttribution, resolveHoverHighlights } from "./HoverAttribution";
-import { resolveRenderedCardPositions } from "./card-positions";
+import { resolveRenderedCardPositions, staleLocalDragIds } from "./card-positions";
 import { useHoverReporter } from "./interactions/hover-reporter";
 
 export function Table() {
@@ -83,11 +83,8 @@ export function Table() {
   }, [cards, definitionsById, magnifiedCardId, renderedPositions, size]);
 
   useEffect(() => {
-    for (const card of cards) {
-      const local = drag.localPositions[card.id];
-      if (local && local.x === card.x && local.y === card.y) {
-        drag.clearLocalPosition(card.id);
-      }
+    for (const cardId of staleLocalDragIds(cards, drag.localPositions)) {
+      drag.clearLocalPosition(cardId);
     }
   }, [cards, drag.localPositions, drag.clearLocalPosition]);
 

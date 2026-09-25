@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CardInstance, CardStack } from "@card-table/shared";
-import { resolveRenderedCardPositions } from "./card-positions";
+import { resolveRenderedCardPositions, staleLocalDragIds } from "./card-positions";
 import { STACK_OFFSET } from "./interactions/snap-detection";
 
 function card(id: string, overrides: Partial<CardInstance> = {}): CardInstance {
@@ -92,5 +92,56 @@ describe("resolveRenderedCardPositions", () => {
     });
 
     expect(positions.get("card-1")).toEqual({ x: 10, y: 20 });
+  });
+});
+
+describe("staleLocalDragIds", () => {
+  it("keeps a local position that is still ahead of the server", () => {
+    const cards = [card("card-1", { x: 100, y: 200 })];
+    expect(staleLocalDragIds(cards, { "card-1": { x: 300, y: 400 } })).toEqual([]);
+  });
+
+  it("drops it once the server reports the same position", () => {
+    const cards = [card("card-1", { x: 100, y: 200 })];
+    expect(staleLocalDragIds(cards, { "card-1": { x: 100, y: 200 } })).toEqual(["card-1"]);
+  });
+
+  it("drops it when the card joins a stack, which now positions it", () => {
+    // The drag that stacked this card ended at (300, 400); STACK_CARD files the
+    // card into the stack without moving it, so its own coordinates still read
+    // (100, 200) and would never meet the drop position.
+    const cards = [card("card-1", { x: 100, y: 200, stackId: "stack-1" })];
+    expect(staleLocalDragIds(cards, { "card-1": { x: 300, y: 400 } })).toEqual(["card-1"]);
+  });
+
+  it("drops it when the card is deleted, rather than leaking the entry", () => {
+    expect(staleLocalDragIds([], { "card-1": { x: 300, y: 400 } })).toEqual(["card-1"]);
+  });
+
+  it("leaves a card drawn from a stack at the position the server chose", () => {
+    // The sequence that desynced one client: drag a card onto a stack, then
+    // draw it back out. Without clearing on stacking, the stale drop position
+    // outranks the drawn position for whoever performed the original drag.
+    const stacked = [card("card-1", { x: 100, y: 200, stackId: "stack-1" })];
+    const stacks: CardStack[] = [
+      { id: "stack-1", x: 10, y: 20, cardIds: ["card-0", "card-1"], zIndex: 0 },
+    ];
+    let dragged: Record<string, { x: number; y: number }> = {
+      "card-1": { x: 300, y: 400 },
+    };
+
+    for (const id of staleLocalDragIds(stacked, dragged)) {
+      const { [id]: _dropped, ...rest } = dragged;
+      dragged = rest;
+    }
+    expect(dragged).toEqual({});
+
+    // Drawn back out: standalone again, at the position DRAW_CARD assigned.
+    const drawn = [card("card-1", { x: 70, y: 80 })];
+    const positions = resolveRenderedCardPositions(drawn, stacks, {
+      ...noSources,
+      dragged,
+    });
+    expect(positions.get("card-1")).toEqual({ x: 70, y: 80 });
   });
 });
