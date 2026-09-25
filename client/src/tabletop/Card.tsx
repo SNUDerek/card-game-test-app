@@ -10,18 +10,24 @@ interface CardProps {
   orientation: CardOrientation;
 }
 
+export function getCardTransform(orientation: CardOrientation) {
+  return {
+    rotation: orientation === "tapped" ? 90 : 0,
+    offsetX: CARD_WIDTH / 2,
+    offsetY: CARD_HEIGHT / 2,
+  } as const;
+}
+
 export function Card({ definition, x, y, face, orientation }: CardProps) {
-  // If tapped, rotate 90 degrees around center
-  const rotation = orientation === "tapped" ? 90 : 0;
-  
+  const transform = getCardTransform(orientation);
+
   return (
     <Group
       x={x}
       y={y}
-      rotation={rotation}
-      // Set offset to center so rotation revolves around center
-      offsetX={rotation ? CARD_WIDTH / 2 : 0}
-      offsetY={rotation ? CARD_HEIGHT / 2 : 0}
+      rotation={transform.rotation}
+      offsetX={transform.offsetX}
+      offsetY={transform.offsetY}
     >
       <CardRenderer definition={definition} face={face} />
     </Group>

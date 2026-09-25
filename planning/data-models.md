@@ -300,7 +300,9 @@ interface CardInstance {
 
   /**
    * Stack membership.
-   * null means the card is directly on the tabletop.
+   * Logically, null means the card is directly on the tabletop. The Colyseus
+   * wire schema represents this state by omitting the optional stackId field,
+   * so domain code must treat undefined as this logical null value.
    */
   stackId: StackId | null;
 
