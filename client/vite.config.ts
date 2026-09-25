@@ -7,6 +7,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/cards": "http://localhost:2567",
+      "/api": "http://localhost:2567",
     },
   },
 });
