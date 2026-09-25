@@ -10,13 +10,15 @@ import { useCardDrag } from "./interactions/drag";
 import { useInterpolatedCardPositions } from "./interactions/interpolation";
 import { getPreviewSide, MagnifyPreview } from "../features/tabletop/MagnifyPreview";
 import { useLocalUiState } from "../state/local-ui-state";
+import { Stack } from "./Stack";
+import { findStackTarget } from "./interactions/snap-detection";
 
 export function Table() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const { definitionsById } = useCardCatalog();
   const multiplayer = useMultiplayer();
-  const { cards, connectionError, spawnCard } = multiplayer;
+  const { cards, stacks, connectionError, spawnCard } = multiplayer;
   const interpolatedPositions = useInterpolatedCardPositions(cards);
   const drag = useCardDrag(multiplayer);
   const { magnifiedCardId, magnifyCard, unmagnifyCard } = useLocalUiState();
@@ -99,9 +101,19 @@ export function Table() {
               scaleX={DEFAULT_VIEWPORT.scale}
               scaleY={DEFAULT_VIEWPORT.scale}
             >
-              {[...cards]
+              {[...cards.filter((card) => card.stackId === undefined).map((card) => ({
+                kind: "card" as const, zIndex: card.zIndex, card,
+              })), ...stacks.map((stack) => ({
+                kind: "stack" as const, zIndex: stack.zIndex, stack,
+              }))]
                 .sort((a, b) => a.zIndex - b.zIndex)
-                .map((card) => {
+                .map((object) => {
+                  if (object.kind === "stack") return (
+                    <Stack key={object.stack.id} stack={object.stack}
+                      cards={new Map(cards.map((card) => [card.id, card]))}
+                      definitionsById={definitionsById} />
+                  );
+                  const card = object.card;
                   const definition: CardDefinition | undefined = definitionsById.get(
                     card.definitionId,
                   );
@@ -117,7 +129,8 @@ export function Table() {
                       onDragStart={drag.startDrag}
                       onDragMove={drag.moveDrag}
                       onDragEnd={(cardId, nextPosition) => {
-                        void drag.endDrag(cardId, nextPosition);
+                        const target = findStackTarget(cardId, nextPosition, cards, stacks);
+                        void drag.endDrag(cardId, nextPosition, target);
                       }}
                       onFlip={(cardId) => {
                         void multiplayer.flipCard(cardId).catch((cause: unknown) => {

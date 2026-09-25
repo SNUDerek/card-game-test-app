@@ -6,6 +6,9 @@ function assertObjectExists(state: RoomState, object: TableObjectRef): void {
   if (object.kind === "card" && !state.cards.has(object.id)) {
     throw new DomainCommandError(`Unknown card: ${object.id}`);
   }
+  if (object.kind === "stack" && !state.stacks.has(object.id)) {
+    throw new DomainCommandError(`Unknown stack: ${object.id}`);
+  }
 }
 
 export function claimObject(

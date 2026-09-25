@@ -17,6 +17,7 @@ describe("drag movement throttling", () => {
       claimObject: vi.fn().mockResolvedValue({ expiresAt: 5_000 }),
       moveCard: vi.fn().mockResolvedValue(undefined),
       releaseObject: vi.fn().mockResolvedValue(undefined),
+      stackCard: vi.fn().mockResolvedValue(undefined),
     };
     const { result } = renderHook(() => useCardDrag(commands));
 
@@ -47,6 +48,7 @@ describe("drag movement throttling", () => {
       claimObject: vi.fn().mockRejectedValue(new Error("claimed")),
       moveCard: vi.fn().mockResolvedValue(undefined),
       releaseObject: vi.fn().mockResolvedValue(undefined),
+      stackCard: vi.fn().mockResolvedValue(undefined),
     };
     const { result } = renderHook(() => useCardDrag(commands));
 
@@ -58,5 +60,27 @@ describe("drag movement throttling", () => {
 
     expect(result.current.localPositions["card-1"]).toBeUndefined();
     expect(commands.moveCard).not.toHaveBeenCalled();
+  });
+
+  it("stacks before releasing when dropped on a snap target", async () => {
+    const commands = {
+      claimObject: vi.fn().mockResolvedValue({ expiresAt: 5_000 }),
+      moveCard: vi.fn().mockResolvedValue(undefined),
+      releaseObject: vi.fn().mockResolvedValue(undefined),
+      stackCard: vi.fn().mockResolvedValue(undefined),
+    };
+    const { result } = renderHook(() => useCardDrag(commands));
+    act(() => result.current.startDrag("card-1", { x: 0, y: 0 }));
+    await act(async () => Promise.resolve());
+
+    await act(async () => result.current.endDrag(
+      "card-1", { x: 10, y: 20 }, { kind: "card", cardId: "card-2" },
+    ));
+
+    expect(commands.stackCard).toHaveBeenCalledWith({
+      cardId: "card-1", target: { kind: "card", cardId: "card-2" },
+    });
+    expect(commands.moveCard).not.toHaveBeenCalled();
+    expect(commands.releaseObject).toHaveBeenCalled();
   });
 });

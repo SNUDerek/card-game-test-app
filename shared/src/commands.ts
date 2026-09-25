@@ -10,6 +10,7 @@ export const TABLE_COMMANDS = {
   UNTAP_CARD: "UNTAP_CARD",
   BRING_TO_FRONT: "BRING_TO_FRONT",
   DELETE_CARD: "DELETE_CARD",
+  STACK_CARD: "STACK_CARD",
 } as const;
 
 export const PositionSchema = z.object({
@@ -27,10 +28,10 @@ export interface SpawnCardResult {
   cardId: string;
 }
 
-export const TableObjectRefSchema = z.object({
-  kind: z.literal("card"),
-  id: z.string().min(1),
-});
+export const TableObjectRefSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("card"), id: z.string().min(1) }),
+  z.object({ kind: z.literal("stack"), id: z.string().min(1) }),
+]);
 
 export type TableObjectRef = z.infer<typeof TableObjectRefSchema>;
 
@@ -74,6 +75,19 @@ export interface BringToFrontResult {
 
 export interface DeleteCardResult {
   deleted: true;
+}
+
+export const StackCardPayloadSchema = z.object({
+  cardId: z.string().min(1),
+  target: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("card"), cardId: z.string().min(1) }),
+    z.object({ kind: z.literal("stack"), stackId: z.string().min(1) }),
+  ]),
+});
+export type StackCardPayload = z.infer<typeof StackCardPayloadSchema>;
+
+export interface StackCardResult {
+  stackId: string;
 }
 
 export function objectLockKey(object: TableObjectRef): string {

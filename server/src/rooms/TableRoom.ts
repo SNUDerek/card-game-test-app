@@ -7,6 +7,7 @@ import {
   MoveCardPayloadSchema,
   CardIdPayloadSchema,
   SpawnCardPayloadSchema,
+  StackCardPayloadSchema,
   TABLE_COMMANDS,
   type JoinRoomOptions,
   type PlayerId,
@@ -26,6 +27,7 @@ import { tapCard } from "../commands/card/tap-card.js";
 import { untapCard } from "../commands/card/untap-card.js";
 import { bringToFront } from "../commands/card/bring-to-front.js";
 import { deleteCard } from "../commands/card/delete-card.js";
+import { stackCard } from "../commands/stack/stack-card.js";
 
 export interface TableRoomOptions {
   cardDefinitionIds?: string[];
@@ -167,6 +169,18 @@ export class TableRoom extends Room<{ state: RoomState }> {
       try {
         deleteCard(this.state, playerId, parsed.data.cardId, Date.now());
         return { deleted: true as const };
+      } catch (error) {
+        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
+        throw error;
+      }
+    });
+    this.onMessage(TABLE_COMMANDS.STACK_CARD, (client, rawPayload) => {
+      const parsed = StackCardPayloadSchema.safeParse(rawPayload);
+      if (!parsed.success) throw new ServerError(400, "Invalid STACK_CARD payload.");
+      const playerId = this.playerIdBySessionId.get(client.sessionId);
+      if (!playerId) throw new ServerError(403, "Player is not joined.");
+      try {
+        return { stackId: stackCard(this.state, playerId, parsed.data, Date.now()) };
       } catch (error) {
         if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
         throw error;

@@ -10,10 +10,12 @@ import {
 } from "react";
 import type {
   CardInstance,
+  CardStack,
   ClaimObjectResult,
   SpawnCardPayload,
   MoveCardPayload,
   TableObjectRef,
+  StackCardPayload,
 } from "@card-table/shared";
 import {
   claimObject as sendClaimObject,
@@ -25,14 +27,17 @@ import {
   untapCard as sendUntapCard,
   bringToFront as sendBringToFront,
   deleteCard as sendDeleteCard,
+  stackCard as sendStackCard,
 } from "./commands";
 
 interface ClientRoomState {
   cards: Map<string, CardInstance>;
+  stacks: Map<string, CardStack>;
 }
 
 interface MultiplayerValue {
   cards: CardInstance[];
+  stacks: CardStack[];
   connectionError: string | null;
   spawnCard(payload: SpawnCardPayload): Promise<void>;
   claimObject(object: TableObjectRef): Promise<ClaimObjectResult>;
@@ -43,6 +48,7 @@ interface MultiplayerValue {
   untapCard(cardId: string): Promise<void>;
   bringToFront(cardId: string): Promise<void>;
   deleteCard(cardId: string): Promise<void>;
+  stackCard(payload: StackCardPayload): Promise<void>;
 }
 
 const MultiplayerContext = createContext<MultiplayerValue | null>(null);
@@ -65,6 +71,7 @@ function displayName(): string {
 export function MultiplayerProvider({ children }: { children: ReactNode }) {
   const [room, setRoom] = useState<Room<any, ClientRoomState> | null>(null);
   const [cards, setCards] = useState<CardInstance[]>([]);
+  const [stacks, setStacks] = useState<CardStack[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -93,6 +100,13 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
               zIndex: card.zIndex,
             })),
           );
+          setStacks([...state.stacks.values()].map((stack) => ({
+            id: stack.id,
+            x: stack.x,
+            y: stack.y,
+            cardIds: [...stack.cardIds],
+            zIndex: stack.zIndex,
+          })));
         };
         syncCards(nextRoom.state);
         nextRoom.onStateChange(syncCards);
@@ -185,9 +199,15 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     [room],
   );
 
+  const stackCard = useCallback(async (payload: StackCardPayload) => {
+    if (!room) throw new Error("The tabletop is not connected yet.");
+    await sendStackCard(room, payload);
+  }, [room]);
+
   const value = useMemo(
     () => ({
       cards,
+      stacks,
       connectionError,
       spawnCard,
       claimObject,
@@ -198,9 +218,11 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       untapCard,
       bringToFront,
       deleteCard,
+      stackCard,
     }),
     [
       cards,
+      stacks,
       connectionError,
       spawnCard,
       claimObject,
@@ -211,6 +233,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       untapCard,
       bringToFront,
       deleteCard,
+      stackCard,
     ],
   );
 

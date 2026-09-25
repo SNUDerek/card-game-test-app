@@ -13,6 +13,8 @@ import {
   type SetCardOrientationResult,
   type BringToFrontResult,
   type DeleteCardResult,
+  type StackCardPayload,
+  type StackCardResult,
 } from "@card-table/shared";
 import type { Room } from "@colyseus/sdk";
 
@@ -71,4 +73,8 @@ export function bringToFront(
 
 export function deleteCard(room: Room, payload: CardIdPayload): Promise<DeleteCardResult> {
   return room.request(TABLE_COMMANDS.DELETE_CARD, payload);
+}
+
+export function stackCard(room: Room, payload: StackCardPayload): Promise<StackCardResult> {
+  return room.request(TABLE_COMMANDS.STACK_CARD, payload);
 }
