@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { CardInstance, CardStack, Player } from "@card-table/shared";
+import type { CardInstance, Player } from "@card-table/shared";
 import { getHighlightFootprint, resolveHoverHighlights } from "./HoverAttribution";
 import { playerColor } from "../features/room/player-colors";
 import { CARD_HEIGHT, CARD_WIDTH } from "../cards/CardRenderer";
-import { STACK_OFFSET } from "./interactions/snap-detection";
 
 function player(id: string, joinOrder: number, hoveredCardId?: string): Player {
   return { id, displayName: id, connected: true, joinOrder, hoveredCardId };
@@ -23,14 +22,15 @@ function card(id: string, overrides: Partial<CardInstance> = {}): CardInstance {
 }
 
 const cards = [card("card-1")];
-const noStacks: CardStack[] = [];
+/** Where the cards above are drawn; the highlight must follow this, not card.x. */
+const positions = new Map([["card-1", { x: 100, y: 200 }]]);
 
 describe("resolveHoverHighlights", () => {
   it("marks a card another player is hovering", () => {
     const highlights = resolveHoverHighlights(
       [player("alice", 0, "card-1")],
       cards,
-      noStacks,
+      positions,
       "me",
     );
 
@@ -51,7 +51,7 @@ describe("resolveHoverHighlights", () => {
     const [highlight] = resolveHoverHighlights(
       [player("alice", 0, "card-1")],
       tapped,
-      noStacks,
+      positions,
       "me",
     );
 
@@ -62,7 +62,7 @@ describe("resolveHoverHighlights", () => {
     const highlights = resolveHoverHighlights(
       [player("me", 0, "card-1")],
       cards,
-      noStacks,
+      positions,
       "me",
     );
 
@@ -72,8 +72,8 @@ describe("resolveHoverHighlights", () => {
   it("gives a contested card to the earliest joiner, whatever order players arrive in", () => {
     const contenders = [player("bob", 3, "card-1"), player("ann", 1, "card-1")];
 
-    const forwards = resolveHoverHighlights(contenders, cards, noStacks, "me");
-    const backwards = resolveHoverHighlights([...contenders].reverse(), cards, noStacks, "me");
+    const forwards = resolveHoverHighlights(contenders, cards, positions, "me");
+    const backwards = resolveHoverHighlights([...contenders].reverse(), cards, positions, "me");
 
     expect(forwards).toHaveLength(1);
     expect(forwards[0]!.displayName).toBe("ann");
@@ -83,27 +83,32 @@ describe("resolveHoverHighlights", () => {
 
   it("ignores hovers of cards that are gone, and of disconnected players", () => {
     expect(
-      resolveHoverHighlights([player("alice", 0, "deleted-card")], cards, noStacks, "me"),
+      resolveHoverHighlights([player("alice", 0, "deleted-card")], cards, positions, "me"),
     ).toEqual([]);
 
     const away = { ...player("alice", 0, "card-1"), connected: false };
-    expect(resolveHoverHighlights([away], cards, noStacks, "me")).toEqual([]);
+    expect(resolveHoverHighlights([away], cards, positions, "me")).toEqual([]);
   });
 
-  it("follows a stacked card to its drawn offset rather than its own coordinates", () => {
-    const stacked = [card("card-1", { stackId: "stack-1", x: 999, y: 999 })];
-    const stacks: CardStack[] = [
-      { id: "stack-1", x: 10, y: 20, cardIds: ["card-0", "card-1"], zIndex: 0 },
-    ];
+  it("uses the drawn position, not the card's authoritative coordinates", () => {
+    // A card mid-flight: the server says 999, but it is drawn part-way there.
+    const moving = [card("card-1", { x: 999, y: 999 })];
+    const drawn = new Map([["card-1", { x: 140, y: 240 }]]);
 
     const [highlight] = resolveHoverHighlights(
       [player("alice", 0, "card-1")],
-      stacked,
-      stacks,
+      moving,
+      drawn,
       "me",
     );
 
-    expect(highlight).toMatchObject({ x: 10 + STACK_OFFSET, y: 20 + STACK_OFFSET });
+    expect(highlight).toMatchObject({ x: 140, y: 240 });
+  });
+
+  it("skips a card that has no drawn position yet", () => {
+    expect(
+      resolveHoverHighlights([player("alice", 0, "card-1")], cards, new Map(), "me"),
+    ).toEqual([]);
   });
 });
 

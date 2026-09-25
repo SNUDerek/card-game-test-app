@@ -1,15 +1,9 @@
 import { Group, Rect, Text } from "react-konva";
-import type {
-  CardInstance,
-  CardOrientation,
-  CardStack,
-  Player,
-  PlayerId,
-} from "@card-table/shared";
+import type { CardInstance, CardOrientation, Player, PlayerId } from "@card-table/shared";
 import { CARD_HEIGHT, CARD_WIDTH } from "../cards/CardRenderer";
 import { playerColor } from "../features/room/player-colors";
 import { getCardTransform } from "./Card";
-import { STACK_OFFSET } from "./interactions/snap-detection";
+import type { Point } from "./viewport";
 
 export interface HoverHighlight {
   cardId: string;
@@ -53,11 +47,10 @@ export function getHighlightFootprint(orientation: CardOrientation) {
 export function resolveHoverHighlights(
   players: Player[],
   cards: CardInstance[],
-  stacks: CardStack[],
+  positions: ReadonlyMap<string, Point>,
   selfPlayerId: PlayerId | null,
 ): HoverHighlight[] {
   const cardsById = new Map(cards.map((card) => [card.id, card]));
-  const stacksById = new Map(stacks.map((stack) => [stack.id, stack]));
   const byCard = new Map<string, Player>();
 
   for (const player of players) {
@@ -69,22 +62,22 @@ export function resolveHoverHighlights(
     if (!held || player.joinOrder < held.joinOrder) byCard.set(player.hoveredCardId, player);
   }
 
-  return [...byCard].map(([cardId, player]) => {
+  return [...byCard].flatMap(([cardId, player]) => {
     const card = cardsById.get(cardId)!;
-    // A card in a stack is drawn at a stepped offset from the stack origin, not
-    // at its own coordinates, so the highlight has to follow the same rule.
-    const stack = card.stackId ? stacksById.get(card.stackId) : undefined;
-    const index = stack ? stack.cardIds.indexOf(card.id) : 0;
-    const offset = index * STACK_OFFSET;
+    // Where the card is *drawn*, not where the server last put it: during
+    // remote movement those differ by the interpolation window, and an outline
+    // drawn at the authoritative position visibly runs ahead of its card.
+    const position = positions.get(cardId);
+    if (!position) return [];
 
-    return {
+    return [{
       cardId,
       displayName: player.displayName,
       color: playerColor(player.joinOrder),
-      x: stack ? stack.x + offset : card.x,
-      y: stack ? stack.y + offset : card.y,
+      x: position.x,
+      y: position.y,
       orientation: card.orientation,
-    };
+    }];
   });
 }
 
