@@ -152,7 +152,7 @@ export async function loadCardCatalog(cardsDir: string): Promise<CardCatalog> {
       name: deriveDisplayName(stem),
       type,
       body,
-      imageUrl: `/cards/${imageFile}`,
+      imageUrl: `/cards/${encodeURIComponent(imageFile)}`,
       sourceName: stem,
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     });

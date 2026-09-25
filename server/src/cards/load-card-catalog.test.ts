@@ -85,6 +85,17 @@ describe("loadCardCatalog", () => {
     expect(catalog.get("creature-goblin")?.metadata).toEqual({ flavor: "Sneaky." });
   });
 
+  it("URL-encodes image filenames as a single static-route path segment", async () => {
+    const cardsDir = await makeDir();
+    await writeCard(cardsDir, "magic #1", {
+      json: { id: "item-magic-one", type: "item", body: "..." },
+    });
+
+    const catalog = await loadCardCatalog(cardsDir);
+
+    expect(catalog.get("item-magic-one")?.imageUrl).toBe("/cards/magic%20%231.png");
+  });
+
   it("rejects an image with no matching JSON", async () => {
     const cardsDir = await makeDir();
     await writeCard(cardsDir, "orphan_image", { json: null });
