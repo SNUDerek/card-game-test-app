@@ -24,6 +24,8 @@ import {
   type StackIdPayload,
   type DeleteStackResult,
   type ShuffleStackResult,
+  type SetHoverPayload,
+  type SetHoverResult,
 } from "@card-table/shared";
 import type { Room } from "@colyseus/sdk";
 
@@ -108,4 +110,14 @@ export function deleteStack(room: Room, payload: StackIdPayload): Promise<Delete
 
 export function shuffleStack(room: Room, payload: StackIdPayload): Promise<ShuffleStackResult> {
   return room.request(TABLE_COMMANDS.SHUFFLE_STACK, payload);
+}
+
+/**
+ * Fire-and-forget, unlike the other wrappers here. Hover is presence: a lost
+ * update is corrected by the next pointer movement, and awaiting a reply for
+ * every card the pointer crosses would add latency to nothing.
+ */
+export function setHover(room: Room, payload: SetHoverPayload): Promise<SetHoverResult | void> {
+  room.send(TABLE_COMMANDS.SET_HOVER, payload);
+  return Promise.resolve();
 }

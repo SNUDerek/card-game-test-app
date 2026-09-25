@@ -12,11 +12,13 @@ import {
   MoveStackPayloadSchema,
   DrawCardPayloadSchema,
   StackIdPayloadSchema,
+  SetHoverPayloadSchema,
   TABLE_COMMANDS,
   ROOM_COMMANDS,
   type JoinRoomOptions,
   type PlayerId,
   type SessionResult,
+  type SetHoverResult,
 } from "@card-table/shared";
 import { PlayerState, RoomState } from "./state/RoomState.js";
 import { spawnCard } from "../commands/card/spawn-card.js";
@@ -39,6 +41,7 @@ import { moveStack } from "../commands/stack/move-stack.js";
 import { drawTopCard } from "../commands/stack/draw-top-card.js";
 import { deleteStack } from "../commands/stack/delete-stack.js";
 import { shuffleStack } from "../commands/stack/shuffle-stack.js";
+import { clearPlayerHover, setPlayerHover } from "../commands/player/set-hover.js";
 import { bringStackToFrontIfNeeded } from "../commands/stack/stack-helpers.js";
 import {
   CommandRateLimiter,
@@ -196,6 +199,17 @@ export class TableRoom extends Room<{ state: RoomState }> {
       return { deleted: true as const };
     });
 
+    // Presence, so it is deliberately lenient: a hover of a card that just
+    // disappeared is a routine crossing on the wire, not a client fault.
+    this.command(
+      TABLE_COMMANDS.SET_HOVER,
+      SetHoverPayloadSchema,
+      ({ playerId }, payload): SetHoverResult => ({
+        hovering: setPlayerHover(this.state, playerId, payload.cardId),
+      }),
+      404,
+    );
+
     this.clock.setInterval(
       () => releaseExpiredLocks(this.state, Date.now()),
       Math.min(this.lockTimeoutMs, 250),
@@ -236,6 +250,9 @@ export class TableRoom extends Room<{ state: RoomState }> {
     // Locks are released immediately rather than held for the grace period
     // (data-models.md §51), so a dropped player never blocks the table.
     releasePlayerLocks(this.state, playerId);
+    // A pointer that is gone is not hovering anything; leaving the highlight up
+    // would credit a card to someone who is not there.
+    clearPlayerHover(this.state, playerId);
     const player = this.state.players.get(playerId);
     if (player) player.connected = false;
 

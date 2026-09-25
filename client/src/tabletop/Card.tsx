@@ -16,6 +16,9 @@ interface CardProps {
   onFlip?(cardId: string): void;
   onContextMenu?(cardId: string, position: Point): void;
   onBringToFront?(cardId: string): void;
+  /** Pointer presence, reported to other players. Not a local-only concern. */
+  onHoverStart?(cardId: string): void;
+  onHoverEnd?(cardId: string): void;
 }
 
 export function getCardTransform(orientation: CardOrientation) {
@@ -43,6 +46,8 @@ export function Card({
   onFlip,
   onContextMenu,
   onBringToFront,
+  onHoverStart,
+  onHoverEnd,
 }: CardProps) {
   const transform = getCardTransform(orientation);
 
@@ -54,6 +59,8 @@ export function Card({
       offsetX={transform.offsetX}
       offsetY={transform.offsetY}
       draggable
+      onMouseEnter={() => onHoverStart?.(id)}
+      onMouseLeave={() => onHoverEnd?.(id)}
       onDragStart={() => onDragStart?.(id, { x, y })}
       onDragMove={(event) => onDragMove?.(id, event.target.position())}
       onDragEnd={(event) => onDragEnd?.(id, event.target.position())}

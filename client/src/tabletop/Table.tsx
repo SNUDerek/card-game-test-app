@@ -19,13 +19,20 @@ import { findStackTarget, resolveStackTarget, STACK_OFFSET } from "./interaction
 import { useStackDrag } from "./interactions/stack-drag";
 import { TableContextMenu, type CardMenuState } from "./TableContextMenu";
 import { SnapTargetOutline } from "./SnapTargetOutline";
+import { HoverAttribution, resolveHoverHighlights } from "./HoverAttribution";
+import { useHoverReporter } from "./interactions/hover-reporter";
 
 export function Table() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const { definitionsById } = useCardCatalog();
   const multiplayer = useMultiplayer();
-  const { cards, stacks, connectionError, spawnCard } = multiplayer;
+  const { cards, stacks, players, selfPlayerId, connectionError, spawnCard } = multiplayer;
+  const hover = useHoverReporter(multiplayer);
+  const hoverHighlights = useMemo(
+    () => resolveHoverHighlights(players, cards, stacks, selfPlayerId),
+    [players, cards, stacks, selfPlayerId],
+  );
   const drag = useCardDrag(multiplayer);
   const locallyDraggedIds = useMemo(
     () => new Set(Object.keys(drag.localPositions)),
@@ -157,6 +164,8 @@ export function Table() {
                       onTopContextMenu={(cardId, stackId, position) => {
                         setCardMenu({ cardId, stackId, ...position });
                       }}
+                      onTopHoverStart={hover.hoverStart}
+                      onTopHoverEnd={hover.hoverEnd}
                     />
                   );
                   const card = object.card;
@@ -186,6 +195,8 @@ export function Table() {
                       onContextMenu={(cardId, position) => {
                         setCardMenu({ cardId, ...position });
                       }}
+                      onHoverStart={hover.hoverStart}
+                      onHoverEnd={hover.hoverEnd}
                       onBringToFront={(cardId) => {
                         void multiplayer.bringToFront(cardId).catch((cause: unknown) => {
                           console.warn("Bring-to-front rejected:", cause);
@@ -194,6 +205,11 @@ export function Table() {
                     />
                   );
                 })}
+              {/* Drawn above the cards so an outline is never hidden by the
+                  card stacked on top of the one it marks. */}
+              {hoverHighlights.map((highlight) => (
+                <HoverAttribution key={highlight.cardId} highlight={highlight} />
+              ))}
               {resolvedSnapTarget && <SnapTargetOutline target={resolvedSnapTarget} />}
             </Group>
           </Layer>

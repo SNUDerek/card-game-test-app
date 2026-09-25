@@ -7,7 +7,7 @@ import type { Point } from "./viewport";
 
 export function Stack({
   stack, cards, definitionsById, position, onDragStart, onDragMove, onDragEnd,
-  onTopFlip, onTopContextMenu,
+  onTopFlip, onTopContextMenu, onTopHoverStart, onTopHoverEnd,
 }: {
   stack: CardStack;
   cards: ReadonlyMap<string, CardInstance>;
@@ -18,6 +18,8 @@ export function Stack({
   onDragEnd(stackId: string, position: Point): void;
   onTopFlip(cardId: string): void;
   onTopContextMenu(cardId: string, stackId: string, position: Point): void;
+  onTopHoverStart(cardId: string): void;
+  onTopHoverEnd(cardId: string): void;
 }) {
   const topId = stack.cardIds.at(-1);
   return <Group x={position.x} y={position.y} draggable
@@ -33,6 +35,8 @@ export function Stack({
         y={index * STACK_OFFSET}
         rotation={card.orientation === "tapped" ? 90 : 0}
         onDblClick={() => cardId === topId && onTopFlip(cardId)}
+        onMouseEnter={() => cardId === topId && onTopHoverStart(cardId)}
+        onMouseLeave={() => cardId === topId && onTopHoverEnd(cardId)}
         onContextMenu={(event) => {
           if (cardId !== topId) return;
           event.evt.preventDefault();
