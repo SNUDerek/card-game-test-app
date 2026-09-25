@@ -8,8 +8,10 @@ import {
   CardIdPayloadSchema,
   SpawnCardPayloadSchema,
   TABLE_COMMANDS,
+  ROOM_EVENTS,
   type JoinRoomOptions,
   type PlayerId,
+  type SessionEvent,
 } from "@card-table/shared";
 import { PlayerState, RoomState } from "./state/RoomState.js";
 import { spawnCard } from "../commands/card/spawn-card.js";
@@ -26,10 +28,14 @@ import { tapCard } from "../commands/card/tap-card.js";
 import { untapCard } from "../commands/card/untap-card.js";
 import { bringToFront } from "../commands/card/bring-to-front.js";
 import { deleteCard } from "../commands/card/delete-card.js";
+import { assignHostIfVacant } from "./host.js";
+import { hashRoomPassword, verifyRoomPassword, type RoomPasswordHash } from "./room-access.js";
 
 export interface TableRoomOptions {
   cardDefinitionIds?: string[];
   lockTimeoutMs?: number;
+  /** Set by the creating client; never synchronized to room state. */
+  password?: string;
 }
 
 export const DEFAULT_OBJECT_LOCK_TIMEOUT_MS = 5_000;
@@ -46,11 +52,16 @@ export class TableRoom extends Room<{ state: RoomState }> {
   private readonly playerIdBySessionId = new Map<string, PlayerId>();
   private cardDefinitionIds: ReadonlySet<string> = new Set();
   private lockTimeoutMs = DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
+  private passwordHash: RoomPasswordHash | undefined;
+  private joinCount = 0;
 
   onCreate(options: TableRoomOptions = {}) {
     this.setState(new RoomState());
     this.cardDefinitionIds = new Set(options.cardDefinitionIds ?? []);
     this.lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
+    this.passwordHash = options.password ? hashRoomPassword(options.password) : undefined;
+    // Rooms are shared by URL, never matchmade: keep them out of any listing.
+    void this.setPrivate(true);
     this.onMessage(TABLE_COMMANDS.SPAWN_CARD, (_client, rawPayload) => {
       const parsed = SpawnCardPayloadSchema.safeParse(rawPayload);
       if (!parsed.success) {
@@ -180,7 +191,11 @@ export class TableRoom extends Room<{ state: RoomState }> {
   }
 
   onAuth(_client: Client, options: unknown, _context: AuthContext): JoinRoomOptions {
-    return parseJoinOptions(options);
+    const joinOptions = parseJoinOptions(options);
+    if (!verifyRoomPassword(this.passwordHash, joinOptions.password)) {
+      throw new ServerError(401, "Incorrect room password.");
+    }
+    return joinOptions;
   }
 
   onJoin(client: Client, options: unknown) {
@@ -190,11 +205,19 @@ export class TableRoom extends Room<{ state: RoomState }> {
       id: playerId,
       displayName,
       connected: true,
+      joinOrder: this.joinCount++,
     });
 
     this.playerIdBySessionId.set(client.sessionId, playerId);
     this.state.players.set(playerId, player);
+    assignHostIfVacant(this.state, playerId);
+    this.sendSession(client, playerId);
     console.log(`${playerId} joined ${this.roomId}`);
+  }
+
+  private sendSession(client: Client, playerId: PlayerId): void {
+    const session: SessionEvent = { playerId };
+    this.send(client, ROOM_EVENTS.SESSION, session);
   }
 
   onLeave(client: Client) {
