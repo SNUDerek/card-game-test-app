@@ -1,7 +1,7 @@
 .magnify-preview {
   position: absolute;
   top: 50%;
-  z-index: 900;
+  z-index: 900; /* below .card-context-menu — see styles.css */
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
