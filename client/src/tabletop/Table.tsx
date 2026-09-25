@@ -1,13 +1,15 @@
 import { Stage, Layer, Rect, Group } from "react-konva";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, getCardOrientationAction } from "./Card";
 import type { CardDefinition } from "@card-table/shared";
-import { DEFAULT_VIEWPORT, screenToWorld } from "./viewport";
+import { DEFAULT_VIEWPORT, screenToWorld, worldToScreen } from "./viewport";
 import { useCardCatalog } from "../features/card-browser/CardCatalogContext";
 import { CARD_DEFINITION_MIME_TYPE } from "../features/card-browser/CardBrowser";
 import { useMultiplayer } from "../multiplayer/MultiplayerContext";
 import { useCardDrag } from "./interactions/drag";
 import { useInterpolatedCardPositions } from "./interactions/interpolation";
+import { getPreviewSide, MagnifyPreview } from "../features/tabletop/MagnifyPreview";
+import { useLocalUiState } from "../state/local-ui-state";
 
 export function Table() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -17,12 +19,23 @@ export function Table() {
   const { cards, connectionError, spawnCard } = multiplayer;
   const interpolatedPositions = useInterpolatedCardPositions(cards);
   const drag = useCardDrag(multiplayer);
+  const { magnifiedCardId, magnifyCard, unmagnifyCard } = useLocalUiState();
   const [cardMenu, setCardMenu] = useState<{ cardId: string; x: number; y: number } | null>(
     null,
   );
   // The menu acts on live card state, so it closes itself if the card is
   // deleted or restacked by another player while it is open.
   const menuCard = cardMenu ? cards.find((card) => card.id === cardMenu.cardId) : undefined;
+
+  const magnified = useMemo(() => {
+    const card = cards.find((candidate) => candidate.id === magnifiedCardId);
+    const definition = card && definitionsById.get(card.definitionId);
+    if (!card || !definition) return null;
+    // Card instance coordinates anchor the centered Konva group (see Card's
+    // offset), so they already represent the card center in world space.
+    const center = worldToScreen({ x: card.x, y: card.y }, DEFAULT_VIEWPORT);
+    return { definition, face: card.face, side: getPreviewSide(center.x, size.width) };
+  }, [cards, definitionsById, magnifiedCardId, size.width]);
 
   useEffect(() => {
     for (const card of cards) {
@@ -114,6 +127,8 @@ export function Table() {
                       onContextMenu={(cardId, position) => {
                         setCardMenu({ cardId, ...position });
                       }}
+                      onHoverStart={magnifyCard}
+                      onHoverEnd={unmagnifyCard}
                       onBringToFront={(cardId) => {
                         void multiplayer.bringToFront(cardId).catch((cause: unknown) => {
                           console.warn("Bring-to-front rejected:", cause);
@@ -125,6 +140,13 @@ export function Table() {
             </Group>
           </Layer>
         </Stage>
+      )}
+      {magnified && (
+        <MagnifyPreview
+          definition={magnified.definition}
+          face={magnified.face}
+          side={magnified.side}
+        />
       )}
       {connectionError && <p className="tabletop-error">{connectionError}</p>}
       {cardMenu && menuCard && (
