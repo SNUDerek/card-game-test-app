@@ -223,4 +223,50 @@ describe("TableRoom connection lifecycle", () => {
     );
     expect(room.state.cards.size).toBe(0);
   });
+
+  it("synchronizes explicit and drag-driven bring-to-front ordering", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const first = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+      definitionId: "spell-1",
+      x: 100,
+      y: 100,
+    });
+    const second = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+      definitionId: "spell-1",
+      x: 100,
+      y: 100,
+    });
+
+    expect(await alice.request(TABLE_COMMANDS.BRING_TO_FRONT, { cardId: first.cardId })).toEqual({
+      zIndex: 2,
+    });
+    await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, {
+      object: { kind: "card", id: second.cardId },
+    });
+    expect(room.state.cards.get(second.cardId)?.zIndex).toBe(3);
+
+    await bob.request(TABLE_COMMANDS.BRING_TO_FRONT, { cardId: first.cardId });
+    expect(room.state.cards.get(first.cardId)?.zIndex).toBe(4);
+    await alice.request(TABLE_COMMANDS.MOVE_CARD, { cardId: second.cardId, x: 120, y: 140 });
+    await room.waitForNextPatch();
+
+    expect(room.state.cards.get(second.cardId)).toMatchObject({ x: 120, y: 140, zIndex: 5 });
+    expect(alice.state.toJSON()).toEqual(room.state.toJSON());
+    expect(bob.state.toJSON()).toEqual(room.state.toJSON());
+  });
+
+  it("rejects invalid bring-to-front requests without changing ordering", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+
+    await expect(alice.request(TABLE_COMMANDS.BRING_TO_FRONT, {})).rejects.toThrow(
+      "Invalid BRING_TO_FRONT payload",
+    );
+    await expect(
+      alice.request(TABLE_COMMANDS.BRING_TO_FRONT, { cardId: "missing" }),
+    ).rejects.toThrow("Unknown card");
+    expect(room.state.cards.size).toBe(0);
+  });
 });

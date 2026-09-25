@@ -24,6 +24,7 @@ import { moveCard } from "../commands/card/move-card.js";
 import { flipCard } from "../commands/card/flip-card.js";
 import { tapCard } from "../commands/card/tap-card.js";
 import { untapCard } from "../commands/card/untap-card.js";
+import { bringToFront } from "../commands/card/bring-to-front.js";
 
 export interface TableRoomOptions {
   cardDefinitionIds?: string[];
@@ -79,6 +80,9 @@ export class TableRoom extends Room<{ state: RoomState }> {
           Date.now(),
           this.lockTimeoutMs,
         );
+        if (parsed.data.object.kind === "card") {
+          bringToFront(this.state, parsed.data.object.id);
+        }
         return { expiresAt: lock.expiresAt };
       } catch (error) {
         if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
@@ -138,6 +142,16 @@ export class TableRoom extends Room<{ state: RoomState }> {
       if (!parsed.success) throw new ServerError(400, "Invalid UNTAP_CARD payload.");
       try {
         return { orientation: untapCard(this.state, parsed.data.cardId) };
+      } catch (error) {
+        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
+        throw error;
+      }
+    });
+    this.onMessage(TABLE_COMMANDS.BRING_TO_FRONT, (_client, rawPayload) => {
+      const parsed = CardIdPayloadSchema.safeParse(rawPayload);
+      if (!parsed.success) throw new ServerError(400, "Invalid BRING_TO_FRONT payload.");
+      try {
+        return { zIndex: bringToFront(this.state, parsed.data.cardId) };
       } catch (error) {
         if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
         throw error;

@@ -15,6 +15,7 @@ interface CardProps {
   onDragEnd?(cardId: string, position: Point): void;
   onFlip?(cardId: string): void;
   onToggleTap?(cardId: string, orientation: CardOrientation): void;
+  onBringToFront?(cardId: string): void;
 }
 
 export function getCardTransform(orientation: CardOrientation) {
@@ -41,6 +42,7 @@ export function Card({
   onDragEnd,
   onFlip,
   onToggleTap,
+  onBringToFront,
 }: CardProps) {
   const transform = getCardTransform(orientation);
 
@@ -61,6 +63,8 @@ export function Card({
         event.evt.preventDefault();
         onToggleTap?.(id, orientation);
       }}
+      onClick={() => onBringToFront?.(id)}
+      onTap={() => onBringToFront?.(id)}
     >
       <CardRenderer definition={definition} face={face} />
     </Group>

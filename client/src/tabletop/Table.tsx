@@ -112,6 +112,11 @@ export function Table() {
                           console.warn("Card orientation change rejected:", cause);
                         });
                       }}
+                      onBringToFront={(cardId) => {
+                        void multiplayer.bringToFront(cardId).catch((cause: unknown) => {
+                          console.warn("Bring-to-front rejected:", cause);
+                        });
+                      }}
                     />
                   );
                 })}

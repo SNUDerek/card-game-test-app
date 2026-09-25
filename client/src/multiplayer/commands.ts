@@ -11,6 +11,7 @@ import {
   type CardIdPayload,
   type FlipCardResult,
   type SetCardOrientationResult,
+  type BringToFrontResult,
 } from "@card-table/shared";
 import type { Room } from "@colyseus/sdk";
 
@@ -58,4 +59,11 @@ export function untapCard(
   payload: CardIdPayload,
 ): Promise<SetCardOrientationResult> {
   return room.request(TABLE_COMMANDS.UNTAP_CARD, payload);
+}
+
+export function bringToFront(
+  room: Room,
+  payload: CardIdPayload,
+): Promise<BringToFrontResult> {
+  return room.request(TABLE_COMMANDS.BRING_TO_FRONT, payload);
 }

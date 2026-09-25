@@ -8,6 +8,7 @@ export const TABLE_COMMANDS = {
   FLIP_CARD: "FLIP_CARD",
   TAP_CARD: "TAP_CARD",
   UNTAP_CARD: "UNTAP_CARD",
+  BRING_TO_FRONT: "BRING_TO_FRONT",
 } as const;
 
 export const PositionSchema = z.object({
@@ -64,6 +65,10 @@ export interface FlipCardResult {
 
 export interface SetCardOrientationResult {
   orientation: "upright" | "tapped";
+}
+
+export interface BringToFrontResult {
+  zIndex: number;
 }
 
 export function objectLockKey(object: TableObjectRef): string {

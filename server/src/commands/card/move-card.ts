@@ -6,6 +6,7 @@ import {
 } from "@card-table/shared";
 import type { RoomState } from "../../rooms/state/RoomState.js";
 import { DomainCommandError } from "../errors.js";
+import { bringToFrontIfNeeded } from "./bring-to-front.js";
 
 export function moveCard(
   state: RoomState,
@@ -37,5 +38,6 @@ export function moveCard(
 
   card.x = payload.x;
   card.y = payload.y;
+  bringToFrontIfNeeded(state, payload.cardId);
   lock.expiresAt = now + lockTimeoutMs;
 }
