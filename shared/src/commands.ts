@@ -9,6 +9,7 @@ export const TABLE_COMMANDS = {
   TAP_CARD: "TAP_CARD",
   UNTAP_CARD: "UNTAP_CARD",
   BRING_TO_FRONT: "BRING_TO_FRONT",
+  DELETE_CARD: "DELETE_CARD",
 } as const;
 
 export const PositionSchema = z.object({
@@ -69,6 +70,10 @@ export interface SetCardOrientationResult {
 
 export interface BringToFrontResult {
   zIndex: number;
+}
+
+export interface DeleteCardResult {
+  deleted: true;
 }
 
 export function objectLockKey(object: TableObjectRef): string {
