@@ -17,9 +17,11 @@ const commands = {
   tapCard: vi.fn().mockResolvedValue(undefined),
   untapCard: vi.fn().mockResolvedValue(undefined),
   drawCard: vi.fn().mockResolvedValue(undefined),
+  shuffleStack: vi.fn().mockResolvedValue(undefined),
   deleteCard: vi.fn().mockResolvedValue(undefined),
   deleteStack: vi.fn().mockResolvedValue(undefined),
 };
+const onMagnify = vi.fn();
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -30,6 +32,7 @@ describe("TableContextMenu", () => {
       menu={{ cardId: card.id, x: 100, y: 200 }}
       card={card}
       commands={commands}
+      onMagnify={onMagnify}
       onClose={onClose}
     />);
 
@@ -46,6 +49,7 @@ describe("TableContextMenu", () => {
       card={{ ...card, stackId: stack.id }}
       stack={stack}
       commands={commands}
+      onMagnify={onMagnify}
       onClose={vi.fn()}
     />);
 
@@ -53,6 +57,50 @@ describe("TableContextMenu", () => {
 
     expect(commands.drawCard).toHaveBeenCalledWith({ stackId: stack.id, x: 90, y: 100 });
     expect(screen.getByRole("menuitem", { name: "Delete stack" })).toBeInTheDocument();
+  });
+
+  it("offers shuffle only for a stack", () => {
+    const onClose = vi.fn();
+    const { unmount } = render(<TableContextMenu
+      menu={{ cardId: card.id, x: 100, y: 200 }}
+      card={card}
+      commands={commands}
+      onMagnify={onMagnify}
+      onClose={vi.fn()}
+    />);
+    expect(screen.queryByRole("menuitem", { name: "Shuffle" })).not.toBeInTheDocument();
+    unmount();
+
+    render(<TableContextMenu
+      menu={{ cardId: card.id, stackId: stack.id, x: 100, y: 200 }}
+      card={{ ...card, stackId: stack.id }}
+      stack={stack}
+      commands={commands}
+      onMagnify={onMagnify}
+      onClose={onClose}
+    />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Shuffle" }));
+
+    expect(commands.shuffleStack).toHaveBeenCalledWith(stack.id);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("magnifies locally, without sending any command", () => {
+    const onClose = vi.fn();
+    render(<TableContextMenu
+      menu={{ cardId: card.id, x: 100, y: 200 }}
+      card={card}
+      commands={commands}
+      onMagnify={onMagnify}
+      onClose={onClose}
+    />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Magnify" }));
+
+    expect(onMagnify).toHaveBeenCalledWith(card.id);
+    expect(onClose).toHaveBeenCalled();
+    for (const command of Object.values(commands)) expect(command).not.toHaveBeenCalled();
   });
 
   it("reports rejected stack commands consistently", async () => {
@@ -63,6 +111,7 @@ describe("TableContextMenu", () => {
       card={{ ...card, stackId: stack.id }}
       stack={stack}
       commands={commands}
+      onMagnify={onMagnify}
       onClose={vi.fn()}
     />);
 

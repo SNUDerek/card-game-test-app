@@ -79,27 +79,25 @@ export function CardBrowser() {
             {!isLoading &&
               !error &&
               filteredCards.map((card) => (
-                <article
-                  key={card.id}
-                  className="card-browser-item"
-                  draggable
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = "copy";
-                    event.dataTransfer.setData(CARD_DEFINITION_MIME_TYPE, card.id);
-                  }}
-                >
+                <article key={card.id} className="card-browser-item">
+                  {/* Only the artwork is draggable, so the row's text stays
+                      selectable for copying ids into notes. */}
                   <img
                     src={card.imageUrl}
-                    alt=""
+                    alt={`Drag ${card.name} onto the table`}
                     className="card-image"
                     loading="lazy"
                     decoding="async"
+                    draggable
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "copy";
+                      event.dataTransfer.setData(CARD_DEFINITION_MIME_TYPE, card.id);
+                    }}
                   />
                   <div className="card-info">
                     <div className="card-name">{card.name}</div>
                     <div className="card-type">{card.type}</div>
-                    <div className="card-body">{card.body}</div>
-                    <div className="card-id">ID: {card.id}</div>
+                    <div className="card-id">{card.id}</div>
                   </div>
                 </article>
               ))}

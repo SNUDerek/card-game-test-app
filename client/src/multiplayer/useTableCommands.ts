@@ -18,6 +18,7 @@ import {
   moveCard as sendMoveCard,
   moveStack as sendMoveStack,
   releaseObject as sendReleaseObject,
+  shuffleStack as sendShuffleStack,
   spawnCard as sendSpawnCard,
   stackCard as sendStackCard,
   tapCard as sendTapCard,
@@ -38,6 +39,7 @@ export interface TableCommands {
   stackCard(payload: StackCardPayload): Promise<void>;
   moveStack(payload: MoveStackPayload, confirmed?: boolean): Promise<void>;
   drawCard(payload: DrawCardPayload): Promise<void>;
+  shuffleStack(stackId: string): Promise<void>;
   deleteStack(stackId: string): Promise<void>;
 }
 
@@ -79,6 +81,8 @@ export function useTableCommands(roomRef: RefObject<TableRoom | null>): TableCom
       moveStack: (payload, confirmed = false) =>
         withRoom(async (room) => void (await sendMoveStack(room, payload, confirmed))),
       drawCard: (payload) => withRoom(async (room) => void (await sendDrawCard(room, payload))),
+      shuffleStack: (stackId) =>
+        withRoom(async (room) => void (await sendShuffleStack(room, { stackId }))),
       deleteStack: (stackId) =>
         withRoom(async (room) => void (await sendDeleteStack(room, { stackId }))),
     }),

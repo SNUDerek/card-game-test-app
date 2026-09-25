@@ -12,6 +12,7 @@ interface TableContextMenuCommands {
   tapCard(cardId: string): Promise<void>;
   untapCard(cardId: string): Promise<void>;
   drawCard(payload: DrawCardPayload): Promise<void>;
+  shuffleStack(stackId: string): Promise<void>;
   deleteCard(cardId: string): Promise<void>;
   deleteStack(stackId: string): Promise<void>;
 }
@@ -21,6 +22,11 @@ interface TableContextMenuProps {
   card: CardInstance;
   stack?: CardStack;
   commands: TableContextMenuCommands;
+  /**
+   * Local-only, unlike every other action here: magnifying changes what this
+   * client is looking at and sends nothing, so it is kept out of `commands`.
+   */
+  onMagnify(cardId: string): void;
   onClose(): void;
 }
 
@@ -30,7 +36,14 @@ function reportRejection(label: string, command: Promise<void>) {
   });
 }
 
-export function TableContextMenu({ menu, card, stack, commands, onClose }: TableContextMenuProps) {
+export function TableContextMenu({
+  menu,
+  card,
+  stack,
+  commands,
+  onMagnify,
+  onClose,
+}: TableContextMenuProps) {
   const run = (label: string, command: Promise<void>) => {
     reportRejection(label, command);
     onClose();
@@ -55,6 +68,16 @@ export function TableContextMenu({ menu, card, stack, commands, onClose }: Table
       >
         {card.orientation === "tapped" ? "Untap" : "Tap"}
       </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => {
+          onMagnify(card.id);
+          onClose();
+        }}
+      >
+        Magnify
+      </button>
       {stack && (
         <button
           type="button"
@@ -66,6 +89,15 @@ export function TableContextMenu({ menu, card, stack, commands, onClose }: Table
           }))}
         >
           Draw top card
+        </button>
+      )}
+      {stack && (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => run("Stack shuffle", commands.shuffleStack(stack.id))}
+        >
+          Shuffle
         </button>
       )}
       <button

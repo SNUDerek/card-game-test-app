@@ -38,6 +38,7 @@ import { stackCard } from "../commands/stack/stack-card.js";
 import { moveStack } from "../commands/stack/move-stack.js";
 import { drawTopCard } from "../commands/stack/draw-top-card.js";
 import { deleteStack } from "../commands/stack/delete-stack.js";
+import { shuffleStack } from "../commands/stack/shuffle-stack.js";
 import { bringStackToFrontIfNeeded } from "../commands/stack/stack-helpers.js";
 import {
   CommandRateLimiter,
@@ -186,6 +187,10 @@ export class TableRoom extends Room<{ state: RoomState }> {
     this.command(TABLE_COMMANDS.DRAW_CARD, DrawCardPayloadSchema, ({ playerId, now }, payload) => ({
       cardId: drawTopCard(this.state, playerId, payload, now).id,
     }));
+    this.command(TABLE_COMMANDS.SHUFFLE_STACK, StackIdPayloadSchema, ({ playerId, now }, payload) => {
+      shuffleStack(this.state, playerId, payload.stackId, now);
+      return { shuffled: true as const };
+    });
     this.command(TABLE_COMMANDS.DELETE_STACK, StackIdPayloadSchema, ({ playerId, now }, payload) => {
       deleteStack(this.state, playerId, payload.stackId, now);
       return { deleted: true as const };

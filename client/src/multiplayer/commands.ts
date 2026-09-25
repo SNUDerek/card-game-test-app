@@ -23,6 +23,7 @@ import {
   type DrawCardResult,
   type StackIdPayload,
   type DeleteStackResult,
+  type ShuffleStackResult,
 } from "@card-table/shared";
 import type { Room } from "@colyseus/sdk";
 
@@ -103,4 +104,8 @@ export function drawCard(room: Room, payload: DrawCardPayload): Promise<DrawCard
 
 export function deleteStack(room: Room, payload: StackIdPayload): Promise<DeleteStackResult> {
   return room.request(TABLE_COMMANDS.DELETE_STACK, payload);
+}
+
+export function shuffleStack(room: Room, payload: StackIdPayload): Promise<ShuffleStackResult> {
+  return room.request(TABLE_COMMANDS.SHUFFLE_STACK, payload);
 }

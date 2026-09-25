@@ -67,6 +67,23 @@ describe("CardBrowser", () => {
     expect(screen.queryByText("Albatross")).not.toBeInTheDocument();
   });
 
+  it("makes only the artwork draggable, and sends the definition id", async () => {
+    mockCatalogResponse({ cards });
+    await openBrowser();
+
+    const row = screen.getByText("Zephyr").closest<HTMLElement>(".card-browser-item")!;
+    const image = within(row).getByRole("img");
+    expect(image).toHaveAttribute("draggable", "true");
+    expect(row).not.toHaveAttribute("draggable");
+
+    const dataTransfer = { effectAllowed: "", setData: vi.fn() };
+    fireEvent.dragStart(image, { dataTransfer });
+    expect(dataTransfer.setData).toHaveBeenCalledWith(
+      "application/x-card-definition-id",
+      "a-spell",
+    );
+  });
+
   it("shows an empty state", async () => {
     mockCatalogResponse({ cards: [] });
     await openBrowser();
