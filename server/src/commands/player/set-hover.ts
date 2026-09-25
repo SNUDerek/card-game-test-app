@@ -10,9 +10,11 @@ import { DomainCommandError } from "../errors.js";
  * number of players may hover the same card at once. A player only ever writes
  * their own entry, so there is no lock check to make.
  *
- * Hovering a card that has since been deleted is rejected rather than stored,
- * which keeps the reference in room state from dangling. Clients tolerate a
- * missing card anyway, because a delete and a hover can cross on the wire.
+ * Naming a card that no longer exists is not an error. A hover and a delete
+ * cross on the wire routinely -- the pointer reaches a card in the instant
+ * someone else removes it -- and the honest answer is that the player is now
+ * hovering nothing. Storing the id anyway would leave a dangling reference in
+ * room state, so the hover is cleared instead.
  */
 export function setPlayerHover(
   state: RoomState,
@@ -22,14 +24,9 @@ export function setPlayerHover(
   const player = state.players.get(playerId);
   if (!player) throw new DomainCommandError(`Unknown player: ${playerId}`);
 
-  if (cardId === null) {
-    player.hoveredCardId = undefined;
-    return false;
-  }
-
-  if (!state.cards.has(cardId)) throw new DomainCommandError(`Unknown card: ${cardId}`);
-  player.hoveredCardId = cardId;
-  return true;
+  const hovering = cardId !== null && state.cards.has(cardId);
+  player.hoveredCardId = hovering ? cardId : undefined;
+  return hovering;
 }
 
 /** Drops a player's hover, so a departed pointer does not linger on a card. */
