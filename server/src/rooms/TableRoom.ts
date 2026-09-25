@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { CloseCode, Room, ServerError, type AuthContext, type Client } from "colyseus";
+import { z } from "zod";
 import {
   JoinRoomOptionsSchema,
   ClaimObjectPayloadSchema,
@@ -28,9 +29,8 @@ import {
 } from "../commands/player/object-locks.js";
 import { moveCard } from "../commands/card/move-card.js";
 import { flipCard } from "../commands/card/flip-card.js";
-import { tapCard } from "../commands/card/tap-card.js";
-import { untapCard } from "../commands/card/untap-card.js";
-import { bringToFront } from "../commands/card/bring-to-front.js";
+import { setCardOrientation } from "../commands/card/tap-card.js";
+import { bringToFront, raiseToFront } from "../commands/card/bring-to-front.js";
 import { deleteCard } from "../commands/card/delete-card.js";
 import { assignHostIfVacant, migrateHostIfNeeded } from "./host.js";
 import { hashRoomPassword, verifyRoomPassword, type RoomPasswordHash } from "./room-access.js";
@@ -47,6 +47,15 @@ export interface TableRoomOptions {
   password?: string;
   /** How long a dropped player keeps their identity. 0 disables reconnection. */
   reconnectionGraceSeconds?: number;
+}
+
+/**
+ * What a command handler is handed once the room has parsed the payload and
+ * established who is asking.
+ */
+interface CommandContext {
+  playerId: PlayerId;
+  now: number;
 }
 
 export const DEFAULT_OBJECT_LOCK_TIMEOUT_MS = 5_000;
@@ -68,6 +77,36 @@ export class TableRoom extends Room<{ state: RoomState }> {
   private reconnectionGraceSeconds = DEFAULT_RECONNECTION_GRACE_SECONDS;
   private joinCount = 0;
 
+  /**
+   * Registers one command with the checks every command needs: structural
+   * validation, a joined player, and domain errors mapped to a status.
+   * Registering through this is what keeps any single handler from
+   * quietly skipping one of them.
+   */
+  private command<Schema extends z.ZodType>(
+    name: string,
+    schema: Schema,
+    run: (context: CommandContext, payload: z.infer<Schema>) => unknown,
+    rejectionStatus = 409,
+  ): void {
+    this.onMessage(name, (client, rawPayload) => {
+      const now = Date.now();
+      const parsed = schema.safeParse(rawPayload);
+      if (!parsed.success) throw new ServerError(400, `Invalid ${name} payload.`);
+      const playerId = this.playerIdBySessionId.get(client.sessionId);
+      if (!playerId) throw new ServerError(403, "Player is not joined.");
+
+      try {
+        return run({ playerId, now }, parsed.data);
+      } catch (error) {
+        if (error instanceof DomainCommandError) {
+          throw new ServerError(rejectionStatus, error.message);
+        }
+        throw error;
+      }
+    });
+  }
+
   onCreate(options: TableRoomOptions = {}) {
     this.setState(new RoomState());
     this.cardDefinitionIds = new Set(options.cardDefinitionIds ?? []);
@@ -77,184 +116,62 @@ export class TableRoom extends Room<{ state: RoomState }> {
       options.reconnectionGraceSeconds ?? DEFAULT_RECONNECTION_GRACE_SECONDS;
     // Rooms are shared by URL, never matchmade: keep them out of any listing.
     void this.setPrivate(true);
-    this.onMessage(ROOM_COMMANDS.SESSION, (client): SessionResult => {
-      const playerId = this.playerIdBySessionId.get(client.sessionId);
-      if (!playerId) throw new ServerError(403, "Player is not joined.");
-      return { playerId };
+    this.command(ROOM_COMMANDS.SESSION, z.unknown(), ({ playerId }): SessionResult => ({
+      playerId,
+    }));
+    this.command(
+      TABLE_COMMANDS.SPAWN_CARD,
+      SpawnCardPayloadSchema,
+      (_context, payload) => ({ cardId: spawnCard(this.state, this.cardDefinitionIds, payload).id }),
+      400,
+    );
+    this.command(TABLE_COMMANDS.CLAIM_OBJECT, ClaimObjectPayloadSchema, ({ playerId, now }, payload) => {
+      const lock = claimObject(this.state, playerId, payload.object, now, this.lockTimeoutMs);
+      // Claiming is what a drag starts with, so the claimed object surfaces
+      // immediately rather than waiting for the first movement command.
+      if (payload.object.kind === "card") raiseToFront(this.state, payload.object.id);
+      else bringStackToFrontIfNeeded(this.state, payload.object.id);
+      return { expiresAt: lock.expiresAt };
     });
-    this.onMessage(TABLE_COMMANDS.SPAWN_CARD, (_client, rawPayload) => {
-      const parsed = SpawnCardPayloadSchema.safeParse(rawPayload);
-      if (!parsed.success) {
-        throw new ServerError(400, "Invalid SPAWN_CARD payload.");
-      }
+    this.command(TABLE_COMMANDS.RELEASE_OBJECT, ReleaseObjectPayloadSchema, ({ playerId }, payload) => {
+      releaseObject(this.state, playerId, payload.object);
+      return { released: true as const };
+    });
+    this.command(TABLE_COMMANDS.MOVE_CARD, MoveCardPayloadSchema, ({ playerId, now }, payload) => {
+      moveCard(this.state, playerId, payload, now, this.lockTimeoutMs);
+      return { moved: true as const };
+    });
+    this.command(TABLE_COMMANDS.FLIP_CARD, CardIdPayloadSchema, ({ playerId, now }, payload) => ({
+      face: flipCard(this.state, playerId, payload.cardId, now),
+    }));
+    this.command(TABLE_COMMANDS.TAP_CARD, CardIdPayloadSchema, ({ playerId, now }, payload) => ({
+      orientation: setCardOrientation(this.state, playerId, payload.cardId, now, "tapped"),
+    }));
+    this.command(TABLE_COMMANDS.UNTAP_CARD, CardIdPayloadSchema, ({ playerId, now }, payload) => ({
+      orientation: setCardOrientation(this.state, playerId, payload.cardId, now, "upright"),
+    }));
+    this.command(TABLE_COMMANDS.BRING_TO_FRONT, CardIdPayloadSchema, ({ playerId, now }, payload) => ({
+      zIndex: bringToFront(this.state, playerId, payload.cardId, now),
+    }));
+    this.command(TABLE_COMMANDS.DELETE_CARD, CardIdPayloadSchema, ({ playerId, now }, payload) => {
+      deleteCard(this.state, playerId, payload.cardId, now);
+      return { deleted: true as const };
+    });
+    this.command(TABLE_COMMANDS.STACK_CARD, StackCardPayloadSchema, ({ playerId, now }, payload) => ({
+      stackId: stackCard(this.state, playerId, payload, now),
+    }));
+    this.command(TABLE_COMMANDS.MOVE_STACK, MoveStackPayloadSchema, ({ playerId, now }, payload) => {
+      moveStack(this.state, playerId, payload, now, this.lockTimeoutMs);
+      return { moved: true as const };
+    });
+    this.command(TABLE_COMMANDS.DRAW_CARD, DrawCardPayloadSchema, ({ playerId, now }, payload) => ({
+      cardId: drawTopCard(this.state, playerId, payload, now).id,
+    }));
+    this.command(TABLE_COMMANDS.DELETE_STACK, StackIdPayloadSchema, ({ playerId, now }, payload) => {
+      deleteStack(this.state, playerId, payload.stackId, now);
+      return { deleted: true as const };
+    });
 
-      try {
-        const card = spawnCard(this.state, this.cardDefinitionIds, parsed.data);
-        return { cardId: card.id };
-      } catch (error) {
-        if (error instanceof DomainCommandError) {
-          throw new ServerError(400, error.message);
-        }
-        throw error;
-      }
-    });
-    this.onMessage(TABLE_COMMANDS.CLAIM_OBJECT, (client, rawPayload) => {
-      const parsed = ClaimObjectPayloadSchema.safeParse(rawPayload);
-      if (!parsed.success) throw new ServerError(400, "Invalid CLAIM_OBJECT payload.");
-      const playerId = this.playerIdBySessionId.get(client.sessionId);
-      if (!playerId) throw new ServerError(403, "Player is not joined.");
-
-      try {
-        const lock = claimObject(
-          this.state,
-          playerId,
-          parsed.data.object,
-          Date.now(),
-          this.lockTimeoutMs,
-        );
-        if (parsed.data.object.kind === "card") {
-          bringToFront(this.state, parsed.data.object.id);
-        } else {
-          bringStackToFrontIfNeeded(this.state, parsed.data.object.id);
-        }
-        return { expiresAt: lock.expiresAt };
-      } catch (error) {
-        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
-        throw error;
-      }
-    });
-    this.onMessage(TABLE_COMMANDS.RELEASE_OBJECT, (client, rawPayload) => {
-      const parsed = ReleaseObjectPayloadSchema.safeParse(rawPayload);
-      if (!parsed.success) throw new ServerError(400, "Invalid RELEASE_OBJECT payload.");
-      const playerId = this.playerIdBySessionId.get(client.sessionId);
-      if (!playerId) throw new ServerError(403, "Player is not joined.");
-
-      try {
-        releaseObject(this.state, playerId, parsed.data.object);
-        return { released: true as const };
-      } catch (error) {
-        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
-        throw error;
-      }
-    });
-    this.onMessage(TABLE_COMMANDS.MOVE_CARD, (client, rawPayload) => {
-      const parsed = MoveCardPayloadSchema.safeParse(rawPayload);
-      if (!parsed.success) throw new ServerError(400, "Invalid MOVE_CARD payload.");
-      const playerId = this.playerIdBySessionId.get(client.sessionId);
-      if (!playerId) throw new ServerError(403, "Player is not joined.");
-
-      try {
-        moveCard(this.state, playerId, parsed.data, Date.now(), this.lockTimeoutMs);
-        return { moved: true as const };
-      } catch (error) {
-        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
-        throw error;
-      }
-    });
-    this.onMessage(TABLE_COMMANDS.FLIP_CARD, (_client, rawPayload) => {
-      const parsed = CardIdPayloadSchema.safeParse(rawPayload);
-      if (!parsed.success) throw new ServerError(400, "Invalid FLIP_CARD payload.");
-      try {
-        return { face: flipCard(this.state, parsed.data.cardId) };
-      } catch (error) {
-        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
-        throw error;
-      }
-    });
-    this.onMessage(TABLE_COMMANDS.TAP_CARD, (_client, rawPayload) => {
-      const parsed = CardIdPayloadSchema.safeParse(rawPayload);
-      if (!parsed.success) throw new ServerError(400, "Invalid TAP_CARD payload.");
-      try {
-        return { orientation: tapCard(this.state, parsed.data.cardId) };
-      } catch (error) {
-        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
-        throw error;
-      }
-    });
-    this.onMessage(TABLE_COMMANDS.UNTAP_CARD, (_client, rawPayload) => {
-      const parsed = CardIdPayloadSchema.safeParse(rawPayload);
-      if (!parsed.success) throw new ServerError(400, "Invalid UNTAP_CARD payload.");
-      try {
-        return { orientation: untapCard(this.state, parsed.data.cardId) };
-      } catch (error) {
-        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
-        throw error;
-      }
-    });
-    this.onMessage(TABLE_COMMANDS.BRING_TO_FRONT, (_client, rawPayload) => {
-      const parsed = CardIdPayloadSchema.safeParse(rawPayload);
-      if (!parsed.success) throw new ServerError(400, "Invalid BRING_TO_FRONT payload.");
-      try {
-        return { zIndex: bringToFront(this.state, parsed.data.cardId) };
-      } catch (error) {
-        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
-        throw error;
-      }
-    });
-    this.onMessage(TABLE_COMMANDS.DELETE_CARD, (client, rawPayload) => {
-      const parsed = CardIdPayloadSchema.safeParse(rawPayload);
-      if (!parsed.success) throw new ServerError(400, "Invalid DELETE_CARD payload.");
-      const playerId = this.playerIdBySessionId.get(client.sessionId);
-      if (!playerId) throw new ServerError(403, "Player is not joined.");
-
-      try {
-        deleteCard(this.state, playerId, parsed.data.cardId, Date.now());
-        return { deleted: true as const };
-      } catch (error) {
-        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
-        throw error;
-      }
-    });
-    this.onMessage(TABLE_COMMANDS.STACK_CARD, (client, rawPayload) => {
-      const parsed = StackCardPayloadSchema.safeParse(rawPayload);
-      if (!parsed.success) throw new ServerError(400, "Invalid STACK_CARD payload.");
-      const playerId = this.playerIdBySessionId.get(client.sessionId);
-      if (!playerId) throw new ServerError(403, "Player is not joined.");
-      try {
-        return { stackId: stackCard(this.state, playerId, parsed.data, Date.now()) };
-      } catch (error) {
-        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
-        throw error;
-      }
-    });
-    this.onMessage(TABLE_COMMANDS.MOVE_STACK, (client, rawPayload) => {
-      const parsed = MoveStackPayloadSchema.safeParse(rawPayload);
-      if (!parsed.success) throw new ServerError(400, "Invalid MOVE_STACK payload.");
-      const playerId = this.playerIdBySessionId.get(client.sessionId);
-      if (!playerId) throw new ServerError(403, "Player is not joined.");
-      try {
-        moveStack(this.state, playerId, parsed.data, Date.now(), this.lockTimeoutMs);
-        return { moved: true as const };
-      } catch (error) {
-        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
-        throw error;
-      }
-    });
-    this.onMessage(TABLE_COMMANDS.DRAW_CARD, (client, rawPayload) => {
-      const parsed = DrawCardPayloadSchema.safeParse(rawPayload);
-      if (!parsed.success) throw new ServerError(400, "Invalid DRAW_CARD payload.");
-      const playerId = this.playerIdBySessionId.get(client.sessionId);
-      if (!playerId) throw new ServerError(403, "Player is not joined.");
-      try {
-        return { cardId: drawTopCard(this.state, playerId, parsed.data, Date.now()).id };
-      } catch (error) {
-        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
-        throw error;
-      }
-    });
-    this.onMessage(TABLE_COMMANDS.DELETE_STACK, (client, rawPayload) => {
-      const parsed = StackIdPayloadSchema.safeParse(rawPayload);
-      if (!parsed.success) throw new ServerError(400, "Invalid DELETE_STACK payload.");
-      const playerId = this.playerIdBySessionId.get(client.sessionId);
-      if (!playerId) throw new ServerError(403, "Player is not joined.");
-      try {
-        deleteStack(this.state, playerId, parsed.data.stackId, Date.now());
-        return { deleted: true as const };
-      } catch (error) {
-        if (error instanceof DomainCommandError) throw new ServerError(409, error.message);
-        throw error;
-      }
-    });
     this.clock.setInterval(
       () => releaseExpiredLocks(this.state, Date.now()),
       Math.min(this.lockTimeoutMs, 250),

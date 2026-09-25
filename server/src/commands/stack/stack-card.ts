@@ -5,13 +5,9 @@ import {
 } from "@card-table/shared";
 import type { RoomState } from "../../rooms/state/RoomState.js";
 import { DomainCommandError } from "../errors.js";
+import { rejectForeignLock } from "../player/object-locks.js";
 import { getStandaloneCard } from "../card/card-access.js";
-import {
-  addCardToStack,
-  createStack,
-  getStack,
-  rejectForeignLock,
-} from "./stack-helpers.js";
+import { addCardToStack, createStack, getStack } from "./stack-helpers.js";
 
 function requireOwnedSourceLock(
   state: RoomState,

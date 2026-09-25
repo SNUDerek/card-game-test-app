@@ -393,4 +393,30 @@ describe("TableRoom connection lifecycle", () => {
     expect(room.state.cards.size).toBe(0);
     expect(room.state.stacks.size).toBe(0);
   });
+
+  it("rejects malformed coordinates over the wire without corrupting the room", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const spawned = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
+      definitionId: "spell-1", x: 10, y: 20,
+    });
+    await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, {
+      object: { kind: "card", id: spawned.cardId },
+    });
+
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, 10_000_000, "12"]) {
+      await expect(
+        alice.request(TABLE_COMMANDS.MOVE_CARD, { cardId: spawned.cardId, x: value, y: 0 }),
+      ).rejects.toThrow();
+      await expect(
+        alice.request(TABLE_COMMANDS.SPAWN_CARD, { definitionId: "spell-1", x: 0, y: value }),
+      ).rejects.toThrow();
+    }
+
+    await room.waitForNextPatch();
+    expect(room.state.cards.size).toBe(1);
+    expect(room.state.cards.get(spawned.cardId)).toMatchObject({ x: 10, y: 20 });
+    expect(alice.state.toJSON()).toEqual(room.state.toJSON());
+  });
+
 });

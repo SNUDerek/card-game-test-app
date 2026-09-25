@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { CardInstanceState, RoomState } from "../../rooms/state/RoomState.js";
 import { bringToFront, bringToFrontIfNeeded } from "./bring-to-front.js";
 
+const raise = (state: RoomState, cardId: string) => bringToFront(state, "alice", cardId, 10);
+
 function addCard(state: RoomState, id: string, zIndex: number, stackId?: string) {
   state.cards.set(
     id,
@@ -24,7 +26,7 @@ describe("bringToFront", () => {
     addCard(state, "back", 3);
     addCard(state, "front", 8);
 
-    expect(bringToFront(state, "back")).toBe(9);
+    expect(raise(state, "back")).toBe(9);
     expect(state.cards.get("back")?.zIndex).toBe(9);
   });
 
@@ -41,8 +43,8 @@ describe("bringToFront", () => {
     const state = new RoomState();
     addCard(state, "stacked", 3, "stack-1");
 
-    expect(() => bringToFront(state, "missing")).toThrow("Unknown card");
-    expect(() => bringToFront(state, "stacked")).toThrow("stack");
+    expect(() => raise(state, "missing")).toThrow("Unknown card");
+    expect(() => raise(state, "stacked")).toThrow("stack");
     expect(state.cards.get("stacked")?.zIndex).toBe(3);
   });
 });
