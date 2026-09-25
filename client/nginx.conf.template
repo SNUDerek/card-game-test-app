@@ -1,0 +1,52 @@
+# Rendered at container start: ${SERVER_UPSTREAM} is substituted from the
+# environment (see docker-compose.yml). nginx's own $variables survive, because
+# envsubst only replaces names that exist in the environment.
+
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Deployment config is regenerated per container start, so it must never be
+    # served from a stale cache.
+    location = /config.js {
+        add_header Cache-Control "no-store";
+    }
+
+    location /api/ {
+        proxy_pass http://${SERVER_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /cards/ {
+        proxy_pass http://${SERVER_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Colyseus matchmaking (HTTP) and room connections (WebSocket) share this
+    # prefix. The trailing slash on proxy_pass strips /colyseus/ before
+    # forwarding, so the server sees the paths it expects at its own root.
+    location /colyseus/ {
+        proxy_pass http://${SERVER_UPSTREAM}/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # A tabletop can sit idle far longer than the 60s default, and the
+        # socket must survive that without being cut.
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

@@ -17,6 +17,7 @@ import type {
   RoomId,
 } from "@card-table/shared";
 import { requestSession } from "./commands";
+import { resolveServerEndpoint } from "./endpoint";
 import type { ClientRoomState, TableRoom } from "./room";
 import { useRoomSync } from "./useRoomSync";
 import { useTableCommands, type TableCommands } from "./useTableCommands";
@@ -59,9 +60,11 @@ interface MultiplayerValue extends TableCommands {
 const MultiplayerContext = createContext<MultiplayerValue | null>(null);
 
 function serverEndpoint(): string {
-  if (import.meta.env.VITE_COLYSEUS_URL) return import.meta.env.VITE_COLYSEUS_URL;
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.hostname}:2567`;
+  return resolveServerEndpoint(
+    window.location,
+    window.__CARD_TABLE__,
+    import.meta.env.VITE_COLYSEUS_URL,
+  );
 }
 
 export function MultiplayerProvider({ children }: { children: ReactNode }) {

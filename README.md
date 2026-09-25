@@ -26,7 +26,9 @@ npm run dev
 ```
 
 This starts the Colyseus/Express server on `:2567` and the Vite dev server on `:5173`.
-The Vite dev server automatically proxies HTTP requests for `/cards` and `/api` to the backend server.
+The Vite dev server proxies `/cards`, `/api`, and the Colyseus connection (`/colyseus`)
+to the backend, so the client reaches everything through its own origin — the same
+arrangement Docker uses.
 
 Open [http://localhost:5173](http://localhost:5173) in your browser to access the application.
 
@@ -39,15 +41,58 @@ npm run build       # build shared, server, and client
 
 ## Docker deployment
 
-To run the application using Docker:
-
 ```bash
+cp .env.example .env   # optional; defaults are 8080 and 2567
 docker compose up --build
 ```
 
-The application will be accessible at:
-- **Client UI:** [http://localhost:8080](http://localhost:8080)
-- **Colyseus/Express API:** `http://localhost:2567`
+Defaults put the UI on [http://localhost:8080](http://localhost:8080) and the server
+on `:2567`.
+
+### Configuring ports
+
+Set these in `.env` (Compose reads it automatically):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `CLIENT_PORT` | `8080` | Port the UI is served on |
+| `SERVER_PORT` | `2567` | Port the server listens on, inside and outside the container |
+| `PUBLIC_SERVER_URL` | *(empty)* | Where browsers reach the server. Empty means "this same origin" |
+
+So to fit a host that only exposes 9000–9999:
+
+```ini
+CLIENT_PORT=9000
+SERVER_PORT=9001
+```
+
+### Remote hosting
+
+**Only `CLIENT_PORT` needs to be reachable.** The client talks to the server through
+its own origin under `/colyseus`, which nginx proxies to the server container —
+WebSocket included. Nothing records the hostname, so the same image works on
+`localhost`, a LAN address, or a public host with no rebuild:
+
+```
+http://jennifer.dereks.house:9000
+```
+
+Share that URL and the room link; a co-developer needs nothing else.
+
+Set `PUBLIC_SERVER_URL` **only** if you want browsers to reach the server directly
+instead of through the proxy — then `SERVER_PORT` must be reachable too:
+
+```ini
+PUBLIC_SERVER_URL=http://jennifer.dereks.house:9001
+```
+
+Use `https://` when serving over TLS; the client upgrades the socket to `wss://`
+on its own.
+
+`PUBLIC_SERVER_URL` is applied when the container starts, not when the image is
+built, so changing it only needs `docker compose up -d`. (The older
+`VITE_COLYSEUS_URL` still works for `npm run dev`, but being a Vite variable it is
+inlined at build time and cannot configure a built image.)
 
 The local `cards/` directory is bind-mounted as a read-only volume into the server container. This means you can add, remove, or modify card assets (`.jpg`/`.png` and `.json`) locally, and the server will recognize them without requiring a container rebuild (a backend restart is required to load new cards).
 
