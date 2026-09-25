@@ -187,4 +187,60 @@ describe("TableRoom sessions", () => {
 
     expect(await sessionPlayerId(rejoined)).toBe(playerId);
   });
+
+  it("keeps the host while they are only disconnected, then migrates on expiry", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table", {
+      reconnectionGraceSeconds: 0.2,
+    });
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    await colyseus.connectTo(room, { displayName: "Bob" });
+    const carol = await colyseus.connectTo(room, { displayName: "Carol" });
+    const hostPlayerId = room.state.hostPlayerId;
+
+    alice.reconnection.enabled = false;
+    await alice.leave(false);
+    await room.waitForNextPatch();
+    expect(room.state.hostPlayerId).toBe(hostPlayerId);
+
+    await wait(400);
+    await room.waitForNextPatch();
+
+    const host = room.state.players.get(room.state.hostPlayerId);
+    expect(host?.displayName).toBe("Bob");
+    expect(carol.state.hostPlayerId).toBe(room.state.hostPlayerId);
+  });
+
+  it("migrates the host immediately when they leave on purpose", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+
+    await alice.leave();
+    await room.waitForNextPatch();
+
+    expect(room.state.players.get(room.state.hostPlayerId)?.displayName).toBe("Bob");
+    expect(bob.state.hostPlayerId).toBe(room.state.hostPlayerId);
+  });
+
+  it("gives the room to a returning player when the host left it empty", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table", {
+      reconnectionGraceSeconds: 5,
+    });
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const bobToken = bob.reconnectionToken;
+
+    // Bob drops first, so no connected player is left to inherit the room.
+    await bob.leave(false);
+    await room.waitForNextPatch();
+    await alice.leave();
+    await room.waitForNextPatch();
+    expect(room.state.hostPlayerId).toBe("");
+
+    const rejoined = await colyseus.sdk.reconnect(bobToken);
+    await room.waitForNextPatch();
+
+    expect(room.state.players.get(room.state.hostPlayerId)?.displayName).toBe("Bob");
+    expect(rejoined.state.hostPlayerId).toBe(room.state.hostPlayerId);
+  });
 });

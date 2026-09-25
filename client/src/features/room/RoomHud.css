@@ -1,0 +1,90 @@
+.room-hud {
+  position: fixed;
+  top: 24px;
+  left: 24px;
+  z-index: 950;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 220px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  color: #f1f5f9;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+}
+
+.room-hud-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.room-hud-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #94a3b8;
+}
+
+.room-hud-code {
+  font-family: ui-monospace, monospace;
+  font-size: 14px;
+}
+
+.room-hud-header button,
+.room-hud-leave {
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e2e8f0;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.room-hud-header button {
+  margin-left: auto;
+}
+
+.room-hud-players {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.room-hud-players li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.room-hud-players li.is-away {
+  color: #94a3b8;
+}
+
+.room-hud-name {
+  font-weight: 600;
+}
+
+.room-hud-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #cbd5e1;
+}
+
+.room-hud-tag.is-host {
+  background: #b45309;
+  color: #fff7ed;
+}

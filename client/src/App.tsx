@@ -1,6 +1,7 @@
 import { CardBrowser } from "./features/card-browser/CardBrowser";
 import { CardCatalogProvider } from "./features/card-browser/CardCatalogContext";
 import { Lobby } from "./features/lobby/Lobby";
+import { RoomHud } from "./features/room/RoomHud";
 import { MultiplayerProvider, useMultiplayer } from "./multiplayer/MultiplayerContext";
 import { Table } from "./tabletop/Table";
 
@@ -12,6 +13,7 @@ function Session() {
   return (
     <>
       <Table />
+      <RoomHud />
       <CardBrowser />
     </>
   );

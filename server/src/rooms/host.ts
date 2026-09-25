@@ -20,3 +20,13 @@ export function nextHostPlayerId(state: RoomState): PlayerId {
 export function assignHostIfVacant(state: RoomState, playerId: PlayerId): void {
   if (state.hostPlayerId === "") state.hostPlayerId = playerId;
 }
+
+/**
+ * Hands the room to another connected player when the host leaves for good.
+ * A host who is merely disconnected keeps the room until their reconnection
+ * grace period expires.
+ */
+export function migrateHostIfNeeded(state: RoomState, departedPlayerId: PlayerId): void {
+  if (state.hostPlayerId !== departedPlayerId) return;
+  state.hostPlayerId = nextHostPlayerId(state);
+}

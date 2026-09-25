@@ -28,7 +28,7 @@ import { tapCard } from "../commands/card/tap-card.js";
 import { untapCard } from "../commands/card/untap-card.js";
 import { bringToFront } from "../commands/card/bring-to-front.js";
 import { deleteCard } from "../commands/card/delete-card.js";
-import { assignHostIfVacant } from "./host.js";
+import { assignHostIfVacant, migrateHostIfNeeded } from "./host.js";
 import { hashRoomPassword, verifyRoomPassword, type RoomPasswordHash } from "./room-access.js";
 
 export interface TableRoomOptions {
@@ -247,6 +247,8 @@ export class TableRoom extends Room<{ state: RoomState }> {
       this.playerIdBySessionId.set(reconnected.sessionId, playerId);
       const restored = this.state.players.get(playerId);
       if (restored) restored.connected = true;
+      // The room may have been left hostless while this player was away.
+      assignHostIfVacant(this.state, playerId);
       console.log(`${playerId} reconnected to ${this.roomId}`);
     } catch {
       this.removePlayer(playerId);
@@ -257,6 +259,7 @@ export class TableRoom extends Room<{ state: RoomState }> {
   private removePlayer(playerId: PlayerId): void {
     releasePlayerLocks(this.state, playerId);
     this.state.players.delete(playerId);
+    migrateHostIfNeeded(this.state, playerId);
     console.log(`${playerId} left ${this.roomId}`);
   }
 }
