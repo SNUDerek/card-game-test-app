@@ -12,6 +12,8 @@ interface CardRendererProps {
 export const CARD_WIDTH = 200;
 export const CARD_HEIGHT = 280;
 export const ART_HEIGHT = 140;
+const ART_SIZE = ART_HEIGHT;
+const ART_X = (CARD_WIDTH - ART_SIZE) / 2;
 const BODY_WIDTH = CARD_WIDTH - 20;
 const BODY_HEIGHT = CARD_HEIGHT - ART_HEIGHT - 65;
 
@@ -76,8 +78,9 @@ export function CardRenderer({ definition, face }: CardRendererProps) {
         {image ? (
           <KonvaImage
             image={image}
-            width={CARD_WIDTH}
-            height={ART_HEIGHT}
+            x={ART_X}
+            width={ART_SIZE}
+            height={ART_SIZE}
             imageSmoothingEnabled={false}
           />
         ) : (
