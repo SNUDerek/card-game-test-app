@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMultiplayer } from "../../multiplayer/MultiplayerContext";
 import { roomJoinUrl } from "../../multiplayer/session";
+import { resolveJoinUrlBase } from "../../multiplayer/endpoint";
 import { playerColor } from "./player-colors";
 import "./RoomHud.css";
 
@@ -15,7 +16,10 @@ export function RoomHud() {
 
   if (!roomId) return null;
 
-  const joinUrl = roomJoinUrl(roomId, window.location.origin);
+  const joinUrl = roomJoinUrl(
+    roomId,
+    resolveJoinUrlBase(window.location.origin, window.__CARD_TABLE__),
+  );
 
   async function copyJoinUrl() {
     try {
