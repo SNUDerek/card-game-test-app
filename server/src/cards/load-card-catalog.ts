@@ -2,12 +2,13 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { imageSizeFromFile } from "image-size/fromFile";
 import {
+  CardDefinitionSchema,
   CardDefinitionSourceSchema,
   type CardDefinition,
   type CardDefinitionId,
 } from "@card-table/shared";
 
-const SUPPORTED_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png"]);
+const SUPPORTED_IMAGE_EXTENSIONS = new Set([".jpg", ".png"]);
 const MIN_IMAGE_DIMENSION = 32;
 const MAX_IMAGE_DIMENSION = 512;
 
@@ -39,7 +40,7 @@ function isSupportedImage(fileName: string): boolean {
 }
 
 interface StemFiles {
-  json?: string;
+  jsonFiles: string[];
   images: string[];
 }
 
@@ -52,10 +53,10 @@ async function groupFilesByStem(cardsDir: string): Promise<Map<string, StemFiles
 
     const ext = path.extname(entry.name).toLowerCase();
     const stem = path.basename(entry.name, path.extname(entry.name));
-    const files = byStem.get(stem) ?? { images: [] };
+    const files = byStem.get(stem) ?? { jsonFiles: [], images: [] };
 
     if (ext === ".json") {
-      files.json = entry.name;
+      files.jsonFiles.push(entry.name);
     } else {
       files.images.push(entry.name);
     }
@@ -79,16 +80,21 @@ export async function loadCardCatalog(cardsDir: string): Promise<CardCatalog> {
   const issues: string[] = [];
   const definitions: CardDefinition[] = [];
 
-  for (const [stem, { json, images }] of byStem) {
-    if (!json) {
+  for (const [stem, { jsonFiles, images }] of byStem) {
+    if (jsonFiles.length === 0) {
       issues.push(`image without matching JSON: ${images.join(", ")}`);
       continue;
     }
     if (images.length === 0) {
-      issues.push(`JSON without matching image: ${json}`);
+      issues.push(`JSON without matching image: ${jsonFiles.join(", ")}`);
+      continue;
+    }
+    if (jsonFiles.length > 1) {
+      issues.push(`multiple candidate JSON files for card '${stem}': ${jsonFiles.join(", ")}`);
       continue;
     }
 
+    const json = jsonFiles[0]!;
     const supportedImages = images.filter(isSupportedImage);
     for (const unsupported of images.filter((img) => !isSupportedImage(img))) {
       issues.push(`unsupported image format: ${unsupported}`);
@@ -141,7 +147,7 @@ export async function loadCardCatalog(cardsDir: string): Promise<CardCatalog> {
     }
 
     const { id, type, body, ...metadata } = parsed.data;
-    definitions.push({
+    const definition = CardDefinitionSchema.safeParse({
       id,
       name: deriveDisplayName(stem),
       type,
@@ -150,6 +156,14 @@ export async function loadCardCatalog(cardsDir: string): Promise<CardCatalog> {
       sourceName: stem,
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     });
+    if (!definition.success) {
+      const detail = definition.error.issues
+        .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+        .join("; ");
+      issues.push(`invalid derived card definition for ${json}: ${detail}`);
+      continue;
+    }
+    definitions.push(definition.data);
   }
 
   const sourcesById = new Map<string, string[]>();

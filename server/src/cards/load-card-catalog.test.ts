@@ -143,6 +143,19 @@ describe("loadCardCatalog", () => {
     });
   });
 
+  it("rejects jpeg because the catalog contract supports only jpg and png", async () => {
+    const cardsDir = await makeDir();
+    await writeCard(cardsDir, "unsupported", {
+      json: { id: "x", type: "item", body: "..." },
+      imageExt: "jpeg",
+      imageBytes: Buffer.from("not-a-supported-image"),
+    });
+
+    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+      issues: [expect.stringContaining("unsupported image format")],
+    });
+  });
+
   it("rejects non-square image dimensions", async () => {
     const cardsDir = await makeDir();
     await writeCard(cardsDir, "wide", {
@@ -186,6 +199,28 @@ describe("loadCardCatalog", () => {
 
     await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("multiple candidate images")],
+    });
+  });
+
+  it("rejects ambiguous multiple JSON files for one stem", async () => {
+    const cardsDir = await makeDir();
+    await writeCard(cardsDir, "ambiguous", { json: { id: "x", type: "item", body: "..." } });
+    await writeFile(
+      path.join(cardsDir, "ambiguous.JSON"),
+      JSON.stringify({ id: "y", type: "item", body: "..." }),
+    );
+
+    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+      issues: [expect.stringContaining("multiple candidate JSON files")],
+    });
+  });
+
+  it("rejects a filename that cannot produce a display name", async () => {
+    const cardsDir = await makeDir();
+    await writeCard(cardsDir, "__", { json: { id: "x", type: "item", body: "..." } });
+
+    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+      issues: [expect.stringContaining("invalid derived card definition")],
     });
   });
 

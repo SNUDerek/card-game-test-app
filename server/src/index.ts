@@ -4,12 +4,16 @@ import { WebSocketTransport } from "@colyseus/ws-transport";
 import cors from "cors";
 import { PROTOCOL_VERSION } from "@card-table/shared";
 import { PORT, CARDS_DIR } from "./config/env.js";
-import { CardCatalogError, loadCardCatalog } from "./cards/load-card-catalog.js";
+import {
+  CardCatalogError,
+  loadCardCatalog,
+  type CardCatalog,
+} from "./cards/load-card-catalog.js";
 import { TableRoom } from "./rooms/TableRoom.js";
 
-let cardCount: number;
+let cardCatalog: CardCatalog;
 try {
-  cardCount = (await loadCardCatalog(CARDS_DIR)).size;
+  cardCatalog = await loadCardCatalog(CARDS_DIR);
 } catch (err) {
   if (err instanceof CardCatalogError) {
     console.error(err.message);
@@ -33,4 +37,4 @@ const server = defineServer({
 });
 
 server.listen(PORT);
-console.log(`Card table server listening on :${PORT} (${cardCount} cards loaded)`);
+console.log(`Card table server listening on :${PORT} (${cardCatalog.size} cards loaded)`);
