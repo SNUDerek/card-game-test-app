@@ -1,0 +1,17 @@
+## Summary
+- Implemented `Table` component to host the Konva `Stage` and `Layer` for the static tabletop rendering shell.
+- Added explicit coordinate space container to prepare for world/screen conversion (pan/zoom).
+- Created `CardRenderer` as a pure, deterministic rendering function for a `CardDefinition` that renders art, text, and handles clipping for overflow.
+- Designed a distinct generic card-back for face-down cards.
+- Integrated `Card` wrapper component to handle rotation and positioning of the `CardRenderer`.
+- Added mock instances of cards (upright, tapped, long-text, face-down) to the table to verify proper rendering during this unit phase.
+
+Implements Phase 1, Unit 5 of `planning/mvp-work-breakdown.md`.
+
+## Test plan
+- [x] `npm run typecheck` passes across the client package.
+- [x] Manual: verified that hardcoded local card instances render correctly face-up and face-down.
+- [x] Manual: verified long body text properly clips without overflowing the card boundaries.
+- [x] Manual: verified tapped orientation correctly rotates 90 degrees about the center.
+
+🤖 Generated with Gemini
