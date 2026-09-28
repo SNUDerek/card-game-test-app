@@ -2,6 +2,10 @@
 
 # Data Model and Multiplayer API Specification
 
+> Target specification for the shared-workspace iteration; new account/library features
+> are planned, not necessarily implemented. See [Persistent Workspace Plan](persistent-workspace.md)
+> for the SQL schema and delivery phases and [Project Specification](project-spec.md) for UX.
+
 ## 1. Purpose
 
 This document defines the application's core domain model and multiplayer protocol.
@@ -85,11 +89,14 @@ Clients render the resulting state.
 
 ---
 
-## 2.4 Keep Persistent and Ephemeral State Separate
+## 2.4 Keep Workspace Persistence and Live State Separate
 
-Three categories of state exist:
+Durable workspace data: accounts, sessions, sets, card definitions, saved decks, and image
+metadata in SQLite; immutable artwork files on disk. Rooms are never persisted.
 
-### Persistent room state
+Within a live room, distinguish three categories:
+
+### Canonical room state (in memory only)
 
 Examples:
 
@@ -113,9 +120,11 @@ Examples:
 Examples:
 
 * open menus,
-* hovered card,
 * magnified preview,
 * local viewport.
+
+Which card a player is hovering is shared presence (`Player.hoveredCardId`, set by
+`SET_HOVER`) so others can see it. Hover *styling* and the magnified preview stay local.
 
 ---
 
@@ -126,6 +135,10 @@ All IDs should be represented as opaque strings.
 Recommended logical aliases:
 
 ```ts
+type UserId = string;
+type CardSetId = string;
+type DeckId = string;
+type ImageId = string;
 type CardDefinitionId = string;
 type CardInstanceId = string;
 type StackId = string;
@@ -149,119 +162,93 @@ Clients must not rely on ID format or parse semantic meaning from IDs.
 
 ---
 
-# 4. Card Definition Model
-
-Card definitions are loaded from the configured card directory and are not part of mutable room state.
-
-Example source files:
-
-```text
-cards/
-    fireball.jpg
-    fireball.json
-```
-
-Example JSON:
-
-```json
-{
-  "id": "spell-001",
-  "type": "spell",
-  "body": "Deal 3 damage to one target."
-}
-```
-
-Recommended runtime representation:
+# 4. Workspace Library Models
 
 ```ts
+interface CardSet {
+  id: CardSetId;
+  name: string;
+  description: string;
+  forkedFromSetId: CardSetId | null;
+  revision: number;
+  archivedAt: number | null;
+}
+
 interface CardDefinition {
   id: CardDefinitionId;
-
-  /**
-   * Human-readable display name.
-   * Initially derived from filename.
-   */
+  setId: CardSetId; // exactly one set; cannot move a definition between sets
   name: string;
-
-  /**
-   * Card category supplied by JSON.
-   */
   type: string;
-
-  /**
-   * Primary rules/body text.
-   */
   body: string;
-
-  /**
-   * URL or relative path used by the client to load artwork.
-   */
-  imageUrl: string;
-
-  /**
-   * Original filename stem.
-   */
-  sourceName: string;
-
-  /**
-   * Optional extension point for future card metadata.
-   */
+  imageId: ImageId;
+  imageUrl: string; // derived: /images/<id>
   metadata?: Record<string, unknown>;
+  position: number;
+  revision: number;
+  archived: boolean;
+}
+
+interface ImageAsset {
+  id: ImageId; // SHA-256 of immutable file bytes
+  mime: string;
+  width: number;
+  height: number;
+  byteSize: number;
 }
 ```
 
-The minimum source schema should remain:
+These are API/domain projections; the SQL schema in the workspace plan also includes
+creation/update timestamps and attribution. Attribution does not grant ownership.
+Use generated UUIDs for set/card/deck IDs. Multiple definitions may reference one image.
 
-```ts
-interface CardDefinitionSource {
-  id: string;
-  type: string;
-  body: string;
-}
-```
+Definitions are editable at any time, including while rooms use their set; edits
+propagate to live tables. They cannot be archived while their set is in use, so every
+instance's definition exists for the room's lifetime. Revision fields detect stale writes;
+they do not retain historical versions. Forking copies active cards and decks with new
+IDs and remapped entries, sharing immutable images. Rooms are not copied.
 
-Additional fields should be preserved where practical.
-
-The loader should avoid unnecessarily rejecting new metadata fields.
-
-Recommended Zod behavior:
-
-```text
-validate required known fields
-+
-allow/preserve additional properties
-```
-
-This allows card definitions to evolve without requiring immediate changes to the catalog loader.
+The file importer creates a new set from matching PNG/JPG + JSON pairs. Validate required
+`id`, `type`, `body`, unique source IDs, pairs, and square 32–512 px images with Zod and
+image validation. Derive initial names from stems, preserve extra metadata, and retain
+source IDs as `metadata.sourceId`. Files are importer inputs, not the boot-time database.
 
 ---
 
-# 5. Card Catalog
+# 5. Card Library and Set Usage Locks
 
-The server should build a read-only catalog at startup.
-
-Conceptually:
+SQLite is the source of truth, with a write-through in-memory library cache keyed by
+card ID. Fetch room catalogs through `GET /api/sets/:id/cards`. Do not copy definitions
+into each Colyseus room or each instance.
 
 ```ts
 type CardCatalog = Map<CardDefinitionId, CardDefinition>;
+type SetUsageRegistry = Map<CardSetId, Set<RoomId>>; // server-only, in memory
 ```
 
-Requirements:
+Register usage at room creation and remove it on disposal (including failed creation
+cleanup). Multiple rooms may use a set. It unlocks only when the final room is disposed,
+including reconnect grace. Restart discards both rooms and usage registrations.
 
-* definition IDs must be unique,
-* filename-derived names need not be unique,
-* every JSON definition must have a matching image,
-* invalid definitions should cause a clear startup error or explicit warning policy.
+While used, reject **archiving the set or any of its cards**. Return 409 with an in-use
+reason and room IDs/names. Check usage and commit the archive without an asynchronous gap;
+register a room's set usage without racing an archive.
 
-Recommended API representation:
+All other writes remain allowed during use: set metadata edits, card creation and edits
+(including image reassignment), and every deck operation. After a set or card write,
+notify every live room bound to that set, which broadcasts `CATALOG_CHANGED` (§41).
+Clients refetch the set's cards, redraw affected instances, and show who edited what.
+Rooms validate spawns against the shared cache, so new cards are spawnable immediately.
+Decks are templates copied at deal time and never affect a live table. No per-card usage
+locks are needed. These locks are separate from temporary drag locks and grant no
+privileges to particular users.
 
-```ts
-interface CardCatalogResponse {
-  cards: CardDefinition[];
-}
-```
+A set unlocks when its last room is disposed: last departure (after reconnect grace),
+idle timeout, or an explicit End room (§58).
 
-Card catalog data should not be duplicated into every Colyseus room.
+Unlocked library edits use expected `revision` checks and reject stale writes with 409.
+Preserve the client draft and offer reload. Archive cards rather than hard-delete them;
+reject archival while any saved deck references them. Archived sets cannot start rooms;
+unarchiving is supported. Hard purge is out of scope.
 
 ---
 
@@ -276,7 +263,8 @@ interface CardInstance {
   id: CardInstanceId;
 
   /**
-   * Reference into the immutable CardCatalog.
+   * Reference into the room set's catalog. The definition's content may be edited
+   * (and re-rendered live), but it cannot be archived while the set is in use.
    */
   definitionId: CardDefinitionId;
 
@@ -464,37 +452,34 @@ Orientation does not prevent stacking.
 
 ---
 
-# 11. Player Model
-
-Persistent room membership should use a small player structure.
+# 11. Account and Player Models
 
 ```ts
-interface Player {
-  id: PlayerId;
-
+interface CurrentUser {
+  id: UserId;
+  username: string;
   displayName: string;
+}
 
-  /**
-   * Whether this connection currently has host/admin privileges.
-   */
-  isHost: boolean;
-
-  /**
-   * Connection state where useful.
-   */
+interface Player {
+  id: PlayerId; // one connection, retained during reconnect grace
+  userId: UserId;
+  displayName: string; // supplied by authenticated account
   connected: boolean;
 }
 ```
 
-Do not attach significant user/account semantics to this object.
-
-The initial application has no permanent accounts.
+Accounts persist; players do not. Two tabs from one account have distinct PlayerIds.
+Never synchronize password hashes, salts, session token hashes, or the environment pepper.
+The server stores per-user random salts with scrypt password hashes; `AUTH_PEPPER` stays
+in the environment. Session cookies carry random tokens whose hashes are stored in SQLite.
+Signup is passcode-gated. All logged-in users share access; there is no ownership model.
 
 ---
 
 # 12. Player Presence
 
-Presence is ephemeral and should be kept separate from persistent room state where practical.
+Presence is ephemeral and should be kept separate from canonical room state where practical.
 
 ```ts
 interface PlayerPresence {
@@ -550,7 +535,7 @@ interface ObjectLock {
 
 Locks are ephemeral.
 
-Do not persist them in future room snapshots.
+Discard drag locks on release/disconnect/timeout. There are no room snapshots.
 
 ---
 
@@ -592,6 +577,10 @@ Recommended conceptual room state:
 
 ```ts
 interface RoomState {
+  setId: CardSetId;
+  name: string;
+  description: string;
+
   cards: Map<CardInstanceId, CardInstance>;
 
   stacks: Map<StackId, CardStack>;
@@ -623,7 +612,8 @@ A `CardInstanceId` appears exactly once in the room.
 
 ## Definition validity
 
-Every card instance references a valid catalog definition.
+Every card instance references an active definition belonging to `room.setId`.
+The set usage lock keeps those definitions valid throughout the room lifetime.
 
 ```text
 card.definitionId ∈ CardCatalog
@@ -806,7 +796,13 @@ It is useful for:
 The initial command set should include:
 
 ```text
+SESSION
+SET_HOVER
+
 SPAWN_CARD
+SPAWN_DECK
+UPDATE_ROOM_METADATA
+SHUFFLE_STACK
 
 CLAIM_OBJECT
 RELEASE_OBJECT
@@ -852,7 +848,7 @@ interface SpawnCardPayload {
 
 Validation:
 
-* definition exists,
+* definition exists, is active, and belongs to the room's set,
 * coordinates are finite numbers.
 
 Result:
@@ -1302,7 +1298,6 @@ If so, explicit client use of this command may rarely be required.
 Reserve conceptual space for:
 
 ```text
-SHUFFLE_STACK
 REVERSE_STACK
 SPLIT_STACK
 MERGE_STACKS
@@ -1433,6 +1428,8 @@ Examples:
 ```text
 COMMAND_ERROR
 LOCK_REJECTED
+CATALOG_CHANGED { setId, changedCardIds, editorName }
+ROOM_IDLE_WARNING { endsAt }
 TOAST / informational message
 temporary pen stroke
 temporary ping
@@ -1470,7 +1467,7 @@ Recommended range:
 10–30 messages/sec maximum
 ```
 
-The server may broadcast cursor updates to other users without storing them as persistent room state.
+The server may broadcast cursor updates as ephemeral presence events.
 
 ---
 
@@ -1641,6 +1638,7 @@ Server logic should expose reusable functions roughly equivalent to:
 
 ```ts
 spawnCard(...)
+spawnDeck(...)
 moveCard(...)
 moveStack(...)
 
@@ -1739,81 +1737,44 @@ The room's card/table state remains unaffected.
 
 # 52. Player Identity
 
-Because there are no accounts, player identity is session-scoped.
-
-Recommended approach:
-
-```text
-server-generated PlayerId
-+
-short-lived reconnect token
-```
-
-Do not use display name as identity.
-
-Multiple players may choose the same display name.
+Persistent UserId identifies the authenticated account. Server-generated PlayerId identifies
+one room connection; a short-lived reconnect token retains that player during grace.
+Do not use a display name as identity. Multiple connections may share UserId/displayName.
+Validate authentication for room access; join payloads do not supply account identity.
 
 ---
 
-# 53. Host Model
+# 53. Equal Workspace Access
 
-The room creator becomes host.
-
-Recommended room metadata:
-
-```ts
-interface RoomMetadata {
-  hostPlayerId: PlayerId;
-}
-```
-
-Host privileges may later include:
-
-```text
-kick player
-clear table
-reload/reset room
-change room password
-```
-
-Host migration is optional.
-
-For MVP, if the original host leaves permanently, either:
-
-```text
-assign next connected player as host
-```
-
-or:
-
-```text
-room continues without privileged actions
-```
-
-Automatic reassignment is preferable.
+There are no room passwords, owners, or host-only editing privileges. Any authenticated
+user can create/join rooms and edit unlocked library content; any room member can change
+room descriptors. Existing host bookkeeping must not authorize workspace operations and
+can be removed as the account flow replaces the old lobby.
 
 ---
 
 # 54. Room Metadata
 
-Recommended conceptual model:
-
 ```ts
 interface TableRoomMetadata {
   roomId: RoomId;
-
+  setId: CardSetId;
+  name: string;
+  description: string;
   createdAt: number;
+}
 
-  hostPlayerId: PlayerId;
-
-  /**
-   * Optional server-side room setting.
-   */
-  passwordProtected: boolean;
+interface UpdateRoomMetadataPayload {
+  name: string;
+  description: string;
 }
 ```
 
-Do not synchronize password hashes or secrets to clients.
+`UPDATE_ROOM_METADATA` validates the fields and updates synced state and the Colyseus room
+metadata (`setMetadata({ name, description, setId, setName })`), which is what the live-room
+listing reads. Rooms are not private; the listing uses `matchMaker.query`. The set
+binding cannot change. Metadata lives only in memory; no database room ID,
+room row, autosave, or `SAVE_ROOM` command exists.
 
 ---
 
@@ -1845,91 +1806,88 @@ Example:
 
 ---
 
-# 56. Card Browser / Catalog API
+# 56. Workspace HTTP API
 
-The card catalog may be exposed through ordinary HTTP.
+Unauthenticated access is limited to the static client bundle, `POST /api/auth/login`,
+`POST /api/auth/register` (passcode-gated), and `GET /health`. Every other HTTP route,
+`/images/*`, room creation, and room joins require a valid session cookie. Enforce this
+with router-level middleware plus a test that every non-public route returns 401 without
+a session. No CORS middleware: all traffic is same-origin.
 
-Recommended endpoint:
+- Auth: `POST /api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `GET /api/auth/me`.
+- Sets: `GET/POST /api/sets`, `PATCH/DELETE /api/sets/:id`, `POST /api/sets/:id/fork`.
+  DELETE archives; PATCH supports unarchive as well as metadata edits.
+- Cards: `GET/POST /api/sets/:id/cards`, `PUT/DELETE /api/cards/:id`.
+- Images: `GET/POST /api/images` for selection/upload; `GET /images/:id` serves immutable
+  artwork. Check actual image type/dimensions and bound upload size.
+- Decks: `GET/POST /api/sets/:id/decks`, `GET/PUT/DELETE /api/decks/:id`,
+  `POST /api/decks/:id/duplicate`, `POST /api/sets/:id/decks/generate`.
+- Export: `GET /api/sets/:id/export` downloads the set package (§68).
+- Rooms: `GET /api/rooms` lists live rooms from Colyseus room metadata (name, description,
+  set) plus connected player count. `POST /api/rooms` creates a room (§57).
+  `POST /api/rooms/:id/end` ends a room for everyone (§58).
 
-```text
-GET /api/cards
-```
-
-Response:
-
-```json
-{
-  "cards": [
-    {
-      "id": "spell-001",
-      "name": "Fireball",
-      "type": "spell",
-      "body": "Deal 3 damage to one target.",
-      "imageUrl": "/cards/fireball.jpg"
-    }
-  ]
-}
-```
-
-Optional future endpoint:
-
-```text
-GET /api/cards/:id
-```
-
-Not necessary initially if the full catalog is small.
+Library mutations enforce set usage locks and expected revisions. Deck entry replacement
+and set forking are transactional. Domain validation rejects cross-set deck entries;
+composite foreign keys enforce the same constraint in SQLite. Upload/export can use HTTP
+without introducing tabletop commands. See the workspace plan for detailed storage fields.
 
 ---
 
 # 57. Room Creation API
 
-Room creation may use either:
-
-* Colyseus matchmaking APIs directly,
-* a small HTTP wrapper around room creation.
-
-Conceptual request:
+Rooms are created **only** through authenticated `POST /api/rooms`. It validates the
+selected set is active, calls the matchmaker's `createRoom`, reserves the creator's seat,
+and returns the reservation for the client to consume. Do not allow client-side
+`create("table")`: Colyseus runs `onCreate` before the joining client's `onAuth`, so
+socket-side creation would let an unauthenticated request take a set usage lock. Register
+set usage as part of creation, and clean up if creation fails. A room whose reserved seat
+is never used must be disposed and release its lock; cover this with a test.
 
 ```ts
 interface CreateRoomRequest {
-  displayName: string;
-  password?: string;
+  setId: CardSetId;
+  name: string;
+  description?: string;
 }
-```
 
-Conceptual response:
-
-```ts
 interface CreateRoomResponse {
   roomId: RoomId;
-  joinUrl: string;
+  joinUrl: string; // /rooms/:id
 }
 ```
 
-Exact implementation may follow standard Colyseus connection conventions.
+Rooms exist in memory only. No persistent identity mapping or restore path is required.
 
 ---
 
-# 58. Room Join Model
+# 58. Room Join and End Model
 
-Conceptual join request:
+Join an existing Colyseus room by ID, authenticated with the account session. Validate
+room existence and capacity. Do not accept a client-supplied display name or password.
+A stale link reports “This room has ended”; do not use join-or-create to replace it.
 
-```ts
-interface JoinRoomRequest {
-  displayName: string;
-  password?: string;
+Unexpected disconnect releases drag locks immediately and retains the existing reconnect
+grace. The table and set usage lock remain until the room is disposed after all members
+and reconnection reservations are gone. Intentional last departure ends the room without
+creating a new grace reservation. Server restart ends all rooms.
 
-  reconnectToken?: string;
-}
-```
+Two more ways a room ends, so a forgotten tab cannot hold a set lock indefinitely:
 
-Server validates:
+- **Idle timeout:** no table-mutating command for `ROOM_IDLE_TIMEOUT_MINUTES` (default
+  120). Claims, releases, and hover do not count as activity. Five minutes before, send
+  members an ephemeral warning with **Keep open** (counts as activity) and
+  **Download board image**.
+- **End room:** any authenticated user, member or not, may call
+  `POST /api/rooms/:id/end` after an in-page confirmation. Members are disconnected with
+  “Room ended by <displayName>”, with no reconnection grace.
 
-```text
-room exists
-password accepted
-room permits connection
-```
+Every path to disposal releases the room's set usage registration.
+
+Before the last connected participant leaves through in-app controls, show a warning with
+Cancel, Download board image, and Leave room. Download does not automatically leave.
+Count connections rather than UserIds. Browser-close warnings are best-effort and cannot
+prevent crashes or simultaneous departures.
 
 ---
 
@@ -2085,41 +2043,54 @@ No implementation is required yet.
 
 ---
 
-# 64. Future Deck Model
-
-Do not introduce a separate `Deck` entity for MVP.
-
-On the tabletop, a deck can initially be represented as a stack.
-
-Future deck-building/catalog features may define something like:
+# 64. Deck Model and SPAWN_DECK
 
 ```ts
-interface DeckDefinition {
-  id: string;
-  name: string;
+interface DeckEntry {
+  cardId: CardDefinitionId;
+  copies: number; // integer 1–99
+}
 
-  entries: Array<{
-    definitionId: CardDefinitionId;
-    count: number;
-  }>;
+interface DeckDefinition {
+  id: DeckId;
+  setId: CardSetId;
+  name: string;
+  description: string;
+  revision: number;
+  entries: DeckEntry[];
+}
+
+type SpawnDeckPayload = {
+  x: number;
+  y: number;
+  shuffle: boolean;
+  face: CardFace;
+} & (
+  | { source: "deck"; deckId: DeckId }
+  | { source: "entries"; entries: DeckEntry[] }
+);
+
+interface DeckGenerationParams {
+  size: number;
+  maxCopies: number;
+  includeTypes?: string[];
+  seed?: string;
 }
 ```
 
-Spawning a deck would instantiate cards and create a stack.
+A deck is a persisted template, not a physical stack. Validate unique entry card IDs,
+positive bounded integer counts, active definitions from exactly one set, finite world
+coordinates, and the total `MAX_CARDS_PER_ROOM` capacity before mutation. A saved source
+must belong to the room's set. Expand entries and optionally shuffle, creating upright
+instances with the requested face in one atomic mutation. N ≥ 2 produces one stack ordered
+bottom → top; N = 1 produces a standalone card; empty decks cannot be dealt.
 
-This keeps:
-
-```text
-deck list
-```
-
-and:
-
-```text
-physical tabletop stack
-```
-
-as separate concepts.
+Generation returns `{entries, seed}` without saving. Filter cards, check requested size
+against eligible capacity, then pick uniformly among definitions below maxCopies. Inject
+an RNG for tests. Seeds reproduce results only for identical inputs, stable ordering,
+and algorithm. Quotas and weights are deferred. Decks are not covered by the set usage
+lock, so generated decks can be saved during a playtest. Default dealing UI is shuffled,
+face-down, at the viewport center converted to world coordinates.
 
 ---
 
@@ -2183,8 +2154,8 @@ validation/error result
 Avoid logging:
 
 ```text
-room passwords
-security tokens
+passwords, hashes, salts, and pepper
+session/reconnect tokens
 ```
 
 High-frequency `MOVE_*` commands should either:
@@ -2194,82 +2165,65 @@ High-frequency `MOVE_*` commands should either:
 
 ---
 
-# 68. State Recovery
+# 68. Export Models and Persistence Boundary
 
-Persistent state recovery is out of scope for MVP.
+Rooms have no recovery format, snapshot storage, or save command. Persist only accounts,
+sessions, image metadata, sets, cards, and decks in SQLite, with immutable images on disk.
 
-Future snapshots should contain only durable table state:
+## Set package
 
-```ts
-interface RoomSnapshot {
-  cards: CardInstance[];
-  stacks: CardStack[];
-}
-```
+`GET /api/sets/:id/export` downloads ZIP with `set.json` and image files. A versioned
+manifest contains set descriptors, active card definitions including metadata/display
+order, and saved decks with copy counts. Use export IDs for internal references and
+relative archive image paths, including each image once. Read all records in one
+synchronous transaction, then build the ZIP with `fflate` (images stored, JSON deflated).
+Exclude accounts, sessions, rooms, and archived content. Export is allowed while locked.
+A future importer can assign new database IDs; reimport UI is outside the first delivery.
+CSV and printable sheets are follow-ups. This package is not a workspace backup.
 
-Do not save:
+## Board image
 
-```text
-locks
-cursor positions
-connection IDs
-hover state
-temporary selections
-```
-
-Player information may optionally be excluded entirely from saved snapshots.
-
----
-
-# 69. Initial Implementation Order
-
-Recommended domain/API implementation sequence:
-
-```text
-1. CardDefinition loader + validation
-
-2. RoomState
-   - cards
-   - players
-
-3. SPAWN_CARD
-
-4. Card manipulation
-   - MOVE_CARD
-   - FLIP_CARD
-   - TAP_CARD
-   - UNTAP_CARD
-   - DELETE_CARD
-
-5. Locks
-   - CLAIM_OBJECT
-   - RELEASE_OBJECT
-
-6. Stacks
-   - CardStack
-   - STACK_CARD
-   - MOVE_STACK
-   - DRAW_CARD
-   - stack collapse
-
-7. z-index / bring-to-front behavior
-
-8. reconnection cleanup
-
-9. cursor presence
-
-10. future deck/annotation features
-```
+Download a PNG of the whole occupied board with padding, independent of viewport. Reuse
+card rendering without changing shared state or the visible viewport. Preserve facing,
+orientation, stack appearance, text, artwork, and background; omit menus, hover, selection,
+and cursors. Keep face-down cards face-down. Wait for artwork, report load failures,
+cap dimensions, and allow a blank image for an empty table. Filename includes room name
+and timestamp. This is a local download, not a network command or restorable room save.
 
 ---
 
-# 70. Minimum MVP Protocol
+# 69. Implementation Order
 
-The MVP protocol should ultimately support at least:
+Preserve existing card/stack domain behavior. Follow the workspace plan phases:
+
+1. SQLite connection, migrations, repositories, and Docker volume.
+2. Accounts, sessions, authenticated HTTP/room access, and login UI.
+3. Sets/cards/images, importer/cache, editors, room set binding, and set usage locks.
+4. Deck CRUD/generation, atomic spawning, and set forks.
+5. Live-room browser/descriptors, idle timeout, End room, last-person warning, set export,
+   and board PNG.
+6. Deployment and backup/restore documentation for the persistent library.
+
+Test domain invariants, atomic deck dealing, cross-set rejection, stale library writes,
+and usage-lock cleanup across multiple rooms, reconnect, idle timeout, End room, and
+never-joined rooms. Test that unauthenticated requests are rejected on every non-public route. Export checks should
+verify card/deck references and packaged images. Room persistence tests are unnecessary.
+
+---
+
+# 70. Workspace Table Protocol
+
+The workspace tabletop protocol includes:
 
 ```ts
 type CommandType =
+  | "SESSION"     // returns the caller's PlayerId
+  | "SET_HOVER"   // presence: card under this player's pointer
+
   | "SPAWN_CARD"
+  | "SPAWN_DECK"
+  | "UPDATE_ROOM_METADATA"
+  | "SHUFFLE_STACK"
 
   | "CLAIM_OBJECT"
   | "RELEASE_OBJECT"
@@ -2294,7 +2248,6 @@ Later:
 
 ```ts
 type FutureCommandType =
-  | "SHUFFLE_STACK"
   | "REVERSE_STACK"
   | "SPLIT_STACK"
   | "MERGE_STACKS"
@@ -2303,7 +2256,6 @@ type FutureCommandType =
   | "UPDATE_CURSOR"
   | "ADD_TEMPORARY_STROKE"
 
-  | "SPAWN_DECK"
   | "ROLL_DIE"
   | "CREATE_TOKEN";
 ```
@@ -2316,17 +2268,20 @@ Conceptually:
 
 ```json
 {
+  "setId": "set-skirmish",
+  "name": "Tuesday playtest",
+  "description": "Balance testing",
   "players": {
     "player-1": {
       "id": "player-1",
       "displayName": "Alice",
-      "isHost": true,
+      "userId": "user-alice",
       "connected": true
     },
     "player-2": {
       "id": "player-2",
       "displayName": "Bob",
-      "isHost": false,
+      "userId": "user-bob",
       "connected": true
     }
   },
@@ -2454,8 +2409,9 @@ combat
 automatic scoring
 rule validation
 AI players
-matchmaking
-persistent accounts
+automatic matchmaking
+persistent rooms
+per-user ownership/access permissions
 CRDT synchronization
 P2P networking
 arbitrary undo/redo

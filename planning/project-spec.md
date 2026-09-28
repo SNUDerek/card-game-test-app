@@ -1,5 +1,9 @@
 # Card Game Prototyping Table
 
+> Target specification for the shared-workspace iteration; these requirements are not all
+> implemented yet. See [Persistent Workspace Plan](persistent-workspace.md) for delivery
+> phases and [Data Models](data-models.md) for protocol details.
+
 ## 1. Project Overview
 
 Build a lightweight, browser-based multiplayer application for remotely prototyping physical card games.
@@ -14,7 +18,9 @@ It is **not** a rules engine. The application should not know or enforce the rul
 
 Instead, it provides a shared digital tabletop where users can:
 
-* load card definitions and artwork from local files,
+* log in to a shared workspace,
+* upload artwork and create, edit, fork, and export card sets,
+* build or randomly generate decks from a set,
 * place cards onto a shared play surface,
 * freely move and manipulate cards,
 * create and manipulate stacks,
@@ -56,9 +62,6 @@ The application should prioritize:
 
    * The architecture should allow later addition of features such as:
 
-     * decks,
-     * randomized decks,
-     * constructed deck lists,
      * hands,
      * discard piles,
      * zones,
@@ -68,7 +71,6 @@ The application should prioritize:
      * annotations,
      * temporary drawing tools,
      * text labels,
-     * saved tables,
      * additional card metadata.
 
 ---
@@ -94,78 +96,80 @@ Pan/zoom support may be added if useful, but the initial implementation can assu
 
 ---
 
-# 4. Card Content
+# 4. Sets, Cards, and Decks
 
-## 4.1 Card Source Files
+## 4.1 Shared Library
 
-Cards should be loaded automatically from a configured directory.
+The remotely hosted workspace persists accounts and library data in SQLite, with image
+files on disk. Every logged-in user can access and edit the same workspace; there is no
+ownership or per-user access control.
 
-Each card consists of two matching files:
+- A **set** represents one version of a game and contains unique card definitions.
+- A **card definition** belongs to exactly one set and has a name, type, body, image,
+  optional metadata, and display order.
+- A **deck** is a named template of `{cardId, copies}` entries from one set.
+- A **card instance** is one physical copy on a temporary table. A dealt deck becomes
+  instances and a stack, not a new kind of tabletop object.
 
-```text
-cards/
-    fireball.jpg
-    fireball.json
+The set editor offers card and deck tabs, image selection/upload, text editing, and a
+card preview using the tabletop renderer. Images are immutable and deduplicated by hash.
+Client cropping/resizing and server validation retain square PNG/JPEG artwork at 32–512
+pixels. Preserve PNG transparency and nearest-neighbor rendering for pixel art.
 
-    goblin.png
-    goblin.json
+## 4.2 Deck Building and Generation
 
-    healing_potion.jpg
-    healing_potion.json
-```
+Users can add cards and adjust copy counts in a deck editor, duplicate a saved deck, or
+randomly generate entries using deck size, maximum copies per card, an optional type
+filter, and a seed. Reject infeasible requests with a useful capacity explanation.
+Generation previews can be edited, saved, or dealt directly without saving. Reproducibility
+requires the same inputs, card ordering, and generation algorithm; saved entries preserve
+an actual result. Type quotas and weights are deferred.
 
-Card artwork may use either the `.jpg` or `.png` format. PNG transparency must be
-preserved when loading and rendering artwork.
+Deal creates all instances atomically and places them in one stack at the viewport center
+in world coordinates. Shuffle and face-down default to on. A one-card deck creates a
+standalone card. Validate set membership and the room card limit before any mutation.
 
-Artwork must be square, with both its width and height between 32 and 512 pixels,
-inclusive. Images displayed at a size other than their source resolution must use
-nearest-neighbor scaling (no smoothing) to preserve pixel-art edges.
+## 4.3 Set-Wide Testing Lock and Forks
 
-Matching should be based on filename stem.
+While any room uses a set, **the set and its cards cannot be archived**, because tables
+reference those cards. Enforce this on the server and show which rooms are using the set,
+with **End room** and **Fork this set** actions.
 
-For example:
+Everything else stays editable during a playtest. Users can create cards and edit card
+text, type, and images, and those edits appear live on every table using the set, with a
+short notice such as “Alice edited Fireball”. This lets typo and balance fixes land
+without ending the room. To test a frozen version, fork the set and play the fork. Saved
+decks are templates copied when dealt, so deck changes never affect a live table.
 
-```text
-fireball.jpg
-fireball.json
-```
+The lock begins at room creation and ends when the last room using the set is disposed:
+last departure (after reconnection grace), idle timeout, or End room. Deleting tabletop
+cards does not release it.
 
-represent one card definition.
+Forking deep-copies active cards and decks into a new independent set with new IDs and
+remapped deck entries. Image files can be shared because they are immutable. The fork
+starts unlocked and copies no rooms. This enables iteration during a playtest.
 
-The application should validate the card directory during startup.
+Outside testing, use revision checks to reject stale edits. Archive cards/sets instead
+of hard-deleting them; a card still referenced by a saved deck cannot be archived until
+removed from those decks. Archived sets cannot start rooms and can be unarchived.
 
-Errors such as the following should be reported clearly:
+## 4.4 Existing File Import
 
-* JSON without matching image,
-* image without matching JSON,
-* malformed JSON,
-* missing required fields,
-* fields with invalid types,
-* unsupported image formats,
-* non-square or out-of-range image dimensions,
-* incompatible field structure.
+Keep matching JPG/PNG + JSON files as a CLI importer into a new set, not a boot-time
+catalog. Validate matching stems, unique source IDs, required `id`, `type`, and `body`,
+and image dimensions. Report malformed or missing pairs clearly. Derive initial display
+names from filenames and preserve extra JSON metadata. Generate database UUIDs and store
+the original JSON ID as `metadata.sourceId`.
 
-All card JSON files should conform to the same schema.
+## 4.5 Set Export
 
-Minimum required fields:
+**Export set** downloads a ZIP containing versioned `set.json` and referenced images.
+Include active cards, metadata, display order, and saved decks with copy counts and
+consistent export IDs. Use relative image paths and include each image once. Export is
+available during testing and excludes accounts, sessions, rooms, and archived content.
 
-```json
-{
-  "id": "spell-fireball",
-  "type": "spell",
-  "body": "Deal 3 damage to one target."
-}
-```
-
-The `id` field is an opaque string, not required to follow any particular format.
-The application derives each card's display name from its filename stem and must
-not require a `name` field in the JSON; if a JSON `name` (or any other field
-beyond `id`, `type`, `body`) is present, it is preserved as additional metadata
-rather than used as the display name.
-
-Card definition IDs must be unique across the catalog. The loader rejects the
-entire catalog with a clear aggregated error if any `id` is duplicated.
-Filename-derived display names are not required to be unique.
+Start with this portable package. CSV, printable card sheets, and a reimport UI are
+follow-ups; a set export is not a complete workspace backup.
 
 ---
 
@@ -218,8 +222,10 @@ Users should be able to browse and spawn cards onto the table.
 The initial browser should support sorting/filtering using:
 
 * card `name`,
-* card `id`,
-* card `type`.
+* card `type`,
+* imported source ID (`metadata.sourceId`), when present.
+
+Database card IDs are opaque UUIDs and are not shown or searched.
 
 Cards should be draggable from the browser onto the tabletop.
 
@@ -227,15 +233,9 @@ Dragging a card definition onto the table creates a new card instance.
 
 Multiple instances of the same card definition must be allowed.
 
-The browser should be designed so it can later support:
-
-* search,
-* filters,
-* categories,
-* deck lists,
-* constructed decks,
-* randomized decks,
-* predefined card sets.
+The browser is scoped to the room's set and supports search and type filtering. A Decks
+section offers saved decks to deal and a “Generate & deal” action. Library edits happen
+in the set editor and obey the set-wide testing lock.
 
 ---
 
@@ -336,11 +336,11 @@ Users should be able to:
 * inspect/manipulate the top card,
 * draw/remove the top card,
 * flip the top card,
-* tap/untap the top card.
+* tap/untap the top card,
+* shuffle the stack.
 
 Future stack operations may include:
 
-* shuffle,
 * reverse,
 * draw N,
 * split stack,
@@ -349,7 +349,7 @@ Future stack operations may include:
 
 Stack semantics should therefore be explicit in the application model rather than inferred solely from coordinates.
 
-Detailed state representation will be specified separately.
+Detailed state representation is defined in [data-models.md](data-models.md).
 
 ---
 
@@ -362,7 +362,7 @@ The application should support temporary multiplayer rooms.
 Typical workflow:
 
 ```text
-Create Room
+Log in → select a set → create room
     ↓
 Receive room code / URL
     ↓
@@ -376,12 +376,28 @@ All users interact with the same tabletop
 Example:
 
 ```text
-https://cards.example.com/room/KM7X-PQ3D
+https://cards.example.com/rooms/KM7X-PQ3D
 ```
 
-The first version does not require permanent user accounts.
+Users log in with a persistent account; their display name comes from that account.
+A live-room browser lists room name, set, and connected player count. Rooms have an
+editable name and optional description, stored only in memory. Any member can edit them.
+Each room uses one set. Users may join through the browser or a shared URL.
 
-Users may simply enter a temporary display name when joining.
+Rooms end when their last member leaves and any reconnect grace expires. A stale link
+shows “This room has ended” instead of creating a replacement. Server restarts end all
+rooms. In-app departure by the last connected participant warns that the table will be
+lost and offers Cancel, Download board image, or Leave room. Browser-close warnings are
+best-effort; they do not provide crash recovery. Count connections, including tabs.
+
+So a forgotten open tab cannot keep a set locked, rooms also end after
+`ROOM_IDLE_TIMEOUT_MINUTES` (default 120) without table changes, with a five-minute
+in-room warning offering **Keep open** and **Download board image**. Any logged-in user
+can **End room** from the room browser or the set editor's in-use notice, after
+confirmation.
+
+Rooms are created through an authenticated HTTP endpoint, never directly by a client
+socket, so that no unauthenticated request can create a room or lock a set.
 
 ---
 
@@ -416,7 +432,7 @@ Examples:
 * drawing removes exactly one top card,
 * two users should not simultaneously control the same card.
 
-Detailed state and message definitions will be specified in a separate document.
+Detailed state and message definitions are in [data-models.md](data-models.md).
 
 ---
 
@@ -476,7 +492,7 @@ The implementation should remain lightweight rather than introducing a complicat
 
 Users should eventually be able to see other connected users' cursors.
 
-Presence data is distinct from persistent tabletop state.
+Presence data is distinct from canonical tabletop state; neither survives room disposal.
 
 Examples of presence information:
 
@@ -510,11 +526,11 @@ Strokes should:
 
 * synchronize to connected users,
 * fade automatically after a configurable duration,
-* not become part of persistent game state unless explicitly desired.
+* disappear without being saved to the workspace.
 
 ### Text Labels
 
-Users may place simple temporary or persistent text labels on the tabletop.
+Future text labels may remain for the lifetime of a room; they do not imply saved rooms.
 
 These features are not required for the initial MVP but should not require architectural redesign.
 
@@ -598,57 +614,23 @@ Shared TypeScript types should be used wherever practical.
 
 # 14. Application Architecture
 
-Recommended high-level architecture:
-
 ```text
-┌────────────────────────────────────────────┐
-│                 Browser                    │
-│                                            │
-│  React UI                                  │
-│  ├─ Lobby                                  │
-│  ├─ Room UI                                │
-│  ├─ Card Browser                           │
-│  ├─ Menus                                  │
-│  └─ Overlays                               │
-│                                            │
-│  Konva Table                               │
-│  ├─ Cards                                  │
-│  ├─ Stacks                                 │
-│  ├─ Selection                              │
-│  ├─ Cursor/presence overlays               │
-│  └─ Future annotations                     │
-│                                            │
-└──────────────────┬─────────────────────────┘
-                   │
-                   │ HTTP + WebSocket
-                   │
-┌──────────────────▼─────────────────────────┐
-│             Application Server             │
-│                                            │
-│  HTTP                                      │
-│  ├─ Card catalog                           │
-│  ├─ Card images                            │
-│  └─ App configuration                      │
-│                                            │
-│  Colyseus                                  │
-│  └─ TableRoom                              │
-│      ├─ authoritative table state          │
-│      ├─ connected players                  │
-│      ├─ command handlers                   │
-│      └─ object ownership                   │
-│                                            │
-└──────────────────┬─────────────────────────┘
-                   │
-                   │ filesystem
-                   │
-┌──────────────────▼─────────────────────────┐
-│                  cards/                    │
-│                                            │
-│  *.jpg / *.png                             │
-│  *.json                                    │
-│                                            │
-└────────────────────────────────────────────┘
+Browser
+├─ React: login, live rooms, set/card/deck editors, export controls
+└─ Konva: cards, stacks, interactions, board-image rendering
+        │ HTTP + WebSocket (same origin)
+Node / Colyseus server
+├─ HTTP: auth, library CRUD, images, set export, live-room listing
+├─ Library repositories/cache and in-memory set usage registry
+└─ TableRoom: canonical table, players, drag locks, commands
+        │
+DATA_DIR/ (Docker volume)
+├─ workspace.db (accounts, sessions, images metadata, sets, cards, decks)
+└─ images/ (immutable artwork files)
 ```
+
+Room state and set usage locks are in memory only. Keep UI, rendering, networking,
+library persistence, and tabletop domain functions separate.
 
 ---
 
@@ -665,7 +647,10 @@ client/
     components/
     features/
       card-browser/
-      lobby/
+      auth/
+      rooms/
+      sets/
+      exports/
       tabletop/
       presence/
 
@@ -730,6 +715,10 @@ server/
       stack/
       player/
 
+    auth/
+    db/
+      migrations/
+    library/
     config/
     http/
     shared/
@@ -759,7 +748,9 @@ This is important because the number of available tabletop operations is expecte
 
 # 17. Card Catalog Architecture
 
-Card definitions should be loaded separately from multiplayer table state.
+Card definitions are persisted in SQLite and cached separately from multiplayer table state.
+Library writes update the cache and notify live rooms using that set, which re-render the
+changed cards. Definitions in use cannot be archived.
 
 Conceptually:
 
@@ -792,15 +783,16 @@ CardInstance #789
 
 All three instances can reference the same definition.
 
-Do not duplicate artwork, card text, or other immutable definition data into every multiplayer card instance unless necessary.
+Do not duplicate artwork, card text, or other definition data into every multiplayer card instance unless necessary.
 
 ---
 
 # 18. Local vs Shared State
 
-The application should make a clear distinction between three categories of state.
+The application should distinguish durable workspace data from three categories of live state.
+Accounts, sessions, sets, card definitions, and decks persist in SQLite; artwork persists on disk.
 
-## Shared Persistent Room State
+## Server-Authoritative Room State (In Memory)
 
 Examples:
 
@@ -813,7 +805,8 @@ card facing
 card orientation
 ```
 
-This state belongs to Colyseus and is authoritative on the server.
+This state belongs to Colyseus and is authoritative on the server. It is discarded when
+the room ends; there is no autosave, manual room save, or restore path.
 
 ---
 
@@ -889,108 +882,60 @@ Detailed message formats will be specified separately.
 
 ---
 
-# 20. Session Security
+# 20. Accounts and Session Security
 
-Security requirements are deliberately modest because the application is intended as a private/internal testing tool.
+Use username/password accounts, per-user random password salts, scrypt hashing, and a
+server-wide `AUTH_PEPPER` from the environment. Store only hashed session tokens and use
+HttpOnly cookies, SameSite=Lax, and Secure on HTTPS. Signup requires `SIGNUP_PASSCODE`;
+unset means registration is disabled. Provide an operator account-creation CLI.
 
-Initial security should include:
+Serve HTTP and WebSocket traffic through the same origin with HTTPS in deployment.
+Only the static client bundle, login, passcode-gated registration, and the health check
+are public. Every other API route, image serving, room listing, room creation, and room
+joins require a session. Enforce this once at the router level and test it. Apply
+basic login/signup and command rate limits. Account identity supplies the player name;
+multiple tabs get separate player IDs. Remove room passwords and host-only access rules.
 
-* HTTPS in deployed environments,
-* sufficiently random room IDs,
-* no public room listing,
-* optional room passwords,
-* basic rate limiting,
-* host/admin privileges.
-
-Authentication accounts are not initially required.
-
-A room may optionally distinguish between:
-
-```text
-room ID
-join password
-host/admin secret
-```
-
-Possession of the room URL should therefore not necessarily grant administrative control.
-
-Admin functionality may later include:
-
-* kick user,
-* clear table,
-* reset room,
-* reload card catalog.
+Every authenticated user shares the workspace. Do not add OAuth, ownership, or roles.
 
 ---
 
-# 21. Persistence
+# 21. Persistence and Board Capture
 
-Persistent multiplayer storage is not required for the MVP.
+Persist accounts, sessions, image metadata, sets, card definitions, and saved deck templates
+in SQLite using `better-sqlite3`, numbered SQL migrations, foreign keys, and transactions.
+Keep image files on disk. There is no rooms table and no persistent room state.
 
-Initial behavior may simply be:
+Rooms dispose after the last departure/reconnection grace, releasing set usage locks.
+Locks are held in the single server process and disappear with rooms on restart.
 
-```text
-room created
-    ↓
-users play
-    ↓
-last player leaves
-    ↓
-room eventually destroyed
-```
-
-The architecture should nevertheless allow future addition of saved rooms.
-
-Potential future persistence mechanisms include:
-
-```text
-JSON snapshots
-SQLite
-PostgreSQL
-```
-
-Do not introduce a database until persistent room storage is actually required.
+**Download board image** saves a PNG locally. Capture the whole occupied board with
+padding, independently of viewport pan/zoom, including background, artwork, card text,
+orientation, facing, and visible stack arrangement. Face-down cards remain face-down.
+Exclude menus, selection, hover, and cursors. Use a separate export render, wait for
+artwork, report failures, and bound image dimensions. An empty table yields a blank board.
+Name the file with room name and timestamp. This image cannot restore a playable table.
 
 ---
 
 # 22. Deployment
 
-The application should be easy to self-host.
+Use Docker Compose with a single Node/Colyseus server process, a durable `DATA_DIR`
+volume containing `workspace.db` and `images/`, and same-origin HTTP/WebSocket proxying.
+Browsers reach the page, API, images, and room socket through one origin, so there is no
+CORS configuration. `PUBLIC_SERVER_URL` is removed.
 
-Use Docker Compose.
+HTTPS is required before remote team use, since accounts send passwords. For a home
+server, prefer a Cloudflare Tunnel pointing a hostname at the nginx client container. It
+supplies HTTPS and WebSocket proxying with no router port forwarding. Caddy or another
+reverse proxy is the alternative. Set `COOKIE_SECURE=true` and `TRUST_PROXY` so rate
+limits see real client IPs (`CF-Connecting-IP` behind Cloudflare).
 
-A likely deployment structure:
-
-```text
-docker-compose.yml
-
-client/
-  Dockerfile
-
-server/
-  Dockerfile
-
-cards/
-  *.jpg / *.png
-  *.json
-```
-
-Card content should ideally be bind-mounted read-only:
-
-```yaml
-volumes:
-  - ./cards:/app/cards:ro
-```
-
-This allows card content to be edited independently of application images.
-
-A reverse proxy may later be placed in front of the application to provide:
-
-* HTTPS,
-* hostname routing,
-* WebSocket forwarding.
-
-The application itself should not depend on a particular reverse proxy.
+Document `DATA_DIR`, `AUTH_PEPPER`, `SIGNUP_PASSCODE`, `COOKIE_SECURE`, `TRUST_PROXY`,
+`ROOM_IDLE_TIMEOUT_MINUTES`, and `PUBLIC_CLIENT_URL`. Keep the old
+cards directory only as optional importer input. Back up SQLite with `VACUUM INTO` or
+the backup API, plus image files; preserve the pepper separately. Include restore
+instructions before the team relies on the deployment. Deploys/restarts end live rooms.
 
 ---
 
@@ -1002,12 +947,10 @@ Avoid adding infrastructure without a concrete current need.
 
 Specifically, do not initially introduce:
 
-* user account systems,
 * OAuth,
 * CRDT frameworks,
 * WebRTC networking,
 * peer-to-peer state synchronization,
-* databases,
 * Redux,
 * physics engines,
 * complex animation frameworks,
@@ -1030,8 +973,10 @@ Code should avoid assuming:
 * there is only one card type,
 * card metadata will always contain only `id`, `type`, and `body`,
 * the only card orientation is tapped/untapped,
-* rooms will never be persisted,
-* all users have identical permissions.
+* card definitions and physical deck stacks are the same entity.
+
+Current rooms are intentionally temporary, and all authenticated users have equal access.
+Do not introduce persistence or permissions abstractions for hypothetical future needs.
 
 New tabletop object types should eventually be possible.
 
@@ -1052,75 +997,27 @@ Do not prematurely implement a generic entity/component system, but keep domain 
 
 ---
 
-# 25. MVP Scope
+# 25. Shared Workspace Delivery Scope
 
-The first usable milestone should contain:
+Build on the existing tabletop MVP. The next delivery includes:
 
-### Card Loading
+- Persistent accounts and authenticated shared workspace access.
+- Database-backed sets/cards, image uploads and selection, card editor, and file import.
+- Saved decks, copy-count editor, simple random generation, and atomic deck dealing.
+- Independent set forks and server-enforced set-wide locks during testing.
+- Temporary room creation/joining, live-room browser, editable descriptors, reconnection,
+  and last-participant leave warning.
+- Existing card movement, flipping, tapping, magnification, deletion, stacks, shuffle,
+  and authoritative multiplayer with short-lived drag locks.
+- Set ZIP export and board PNG download.
+- Docker volume, TLS setup, backup/restore documentation.
 
-* Scan configured cards directory.
-* Match JPG or PNG artwork with JSON files.
-* Validate card JSON.
-* Create card catalog.
-* Serve card images and metadata.
+Follow the phase order in [Persistent Workspace Plan](persistent-workspace.md): database,
+accounts, sets/cards with usage locks, decks/forks, room UX/exports, deployment documentation.
 
-### Room Management
-
-* Create room.
-* Join room by code/URL.
-* Enter temporary display name.
-* Disconnect/reconnect.
-
-### Card Browser
-
-* Display all card definitions.
-* Sort by:
-
-  * name,
-  * ID,
-  * type.
-* Drag/spawn card onto table.
-
-### Tabletop
-
-* Green tabletop.
-* Render cards.
-* Move cards.
-* Flip cards.
-* Tap/untap cards.
-* Magnify cards.
-* Delete cards.
-
-### Stacks
-
-* Snap compatible cards into stacks.
-* Render visual stack offsets.
-* Move complete stack.
-* Remove/draw top card.
-* Manipulate top card.
-
-### Multiplayer
-
-* Shared canonical table state.
-* Real-time card movement.
-* Temporary object ownership while dragging.
-* Synchronize all tabletop operations.
-
-The following are explicitly **post-MVP**:
-
-```text
-cursor presence
-pen tool
-text annotations
-deck builder
-deck randomization
-hands
-zones
-dice
-tokens
-persistent saved rooms
-accounts
-```
+Deferred: cursor presence, pen/text annotations, hands, zones, dice, tokens, generator
+quotas/weights, CSV/printable sheets, and export reimport UI. Persistent rooms, ownership
+permissions, and complex history are outside this delivery.
 
 ---
 
@@ -1148,10 +1045,10 @@ Deployment:
     Docker Compose
 
 Storage:
-    filesystem-based card catalog
+    filesystem-backed immutable images
 
 Database:
-    none initially
+    SQLite via better-sqlite3
 ```
 
 The defining architecture is:
@@ -1163,7 +1060,7 @@ Konva tabletop
     +
 Colyseus authoritative multiplayer server
     +
-filesystem card catalog
+SQLite library + filesystem images + temporary in-memory rooms
 ```
 
 This should remain a relatively small application whose complexity grows primarily through additional tabletop operations rather than additional infrastructure.
@@ -1172,14 +1069,19 @@ This should remain a relatively small application whose complexity grows primari
 
 # 27. Follow-Up Specification
 
-A separate specification should define the multiplayer domain model and protocol in detail.
+The [data-models.md](data-models.md) specification defines the domain model and multiplayer
+protocol. The [workspace plan](persistent-workspace.md) supplies the schema sketch and
+implementation phases. These documents describe the target, not implementation status.
 
-That document should cover:
+That document covers:
 
 ```text
+CardSet
 CardDefinition
+DeckDefinition
 CardInstance
 Stack
+CurrentUser
 Player
 PlayerPresence
 RoomState
@@ -1209,4 +1111,4 @@ conflict handling
 
 Do not finalize the detailed Colyseus schema or message API solely from this document.
 
-The state model and event/message API will be designed separately before implementation of the multiplayer domain layer.
+Keep these documents aligned as the workspace changes are implemented.
