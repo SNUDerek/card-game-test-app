@@ -14,6 +14,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       TRUST_PROXY: ${TRUST_PROXY:-1}
       TRUST_CLOUDFLARE_IP: ${TRUST_CLOUDFLARE_IP:-false}
+      ROOM_IDLE_TIMEOUT_MINUTES: ${ROOM_IDLE_TIMEOUT_MINUTES:-120}
     volumes:
       # Only the importer reads this (`cards:import`); the table uses the library.
       - ./cards:/app/cards:ro

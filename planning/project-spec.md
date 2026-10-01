@@ -1,8 +1,9 @@
 # Card Game Prototyping Table
 
-> Target specification for the shared-workspace iteration; these requirements are not all
-> implemented yet. See the archived [Persistent Workspace Plan](archive/persistent-workspace.md) for delivery
-> phases and [Data Models](data-models.md) for protocol details.
+> Specification for the shared-workspace iteration, which is implemented (PRs #20–#32).
+> Remaining gaps are listed in §25. See [Data Models](data-models.md) for protocol details
+> and the archived [Persistent Workspace Plan](archive/persistent-workspace.md) for the
+> original delivery plan.
 
 ## 1. Project Overview
 
@@ -92,7 +93,9 @@ The table should support arbitrary card placement rather than fixed Solitaire-st
 
 Users should be able to freely drag cards around the available play area.
 
-Pan/zoom support may be added if useful, but the initial implementation can assume a reasonably sized fixed tabletop.
+Pan/zoom support may be added if useful. The current table is a fixed view the size of
+the window; state already uses world coordinates so pan/zoom can be added without
+protocol changes.
 
 ---
 
@@ -111,29 +114,35 @@ ownership or per-user access control.
 - A **card instance** is one physical copy on a temporary table. A dealt deck becomes
   instances and a stack, not a new kind of tabletop object.
 
-The set editor offers card and deck tabs, image selection/upload, text editing, and a
-card preview using the tabletop renderer. Images are immutable and deduplicated by hash.
+The set list (**Manage card sets** in the lobby) creates, archives, and unarchives sets
+and shows card/deck counts and fork lineage. The set page edits the set's name and
+description, offers **Fork** and **Export**, and has **Cards** and **Decks** tabs. The
+Cards tab searches name and rules text, filters by type, and opens a card editor with
+image upload, a picker for previously uploaded artwork, and a live preview that uses the
+tabletop renderer. Images are immutable and deduplicated by hash.
 Client cropping/resizing and server validation retain square PNG/JPEG artwork at 32–512
 pixels. Preserve PNG transparency and nearest-neighbor rendering for pixel art.
 
 ## 4.2 Deck Building and Generation
 
-Users can add cards and adjust copy counts in a deck editor, duplicate a saved deck, or
-randomly generate entries using deck size, maximum copies per card, an optional type
-filter, and a seed. Reject infeasible requests with a useful capacity explanation.
-Generation previews can be edited, saved, or dealt directly without saving. Reproducibility
+Users can set copy counts per card in a deck editor, which shows running totals overall
+and by type, or randomly generate entries using deck size, maximum copies per card, an
+optional type filter, and a seed. Reject infeasible requests with a useful capacity
+explanation. A generated result shows its seed and card count, can be rerolled, and can
+be saved as a deck; inside a room it can be dealt directly without saving. Reproducibility
 requires the same inputs, card ordering, and generation algorithm; saved entries preserve
 an actual result. Type quotas and weights are deferred.
 
-Deal creates all instances atomically and places them in one stack at the viewport center
-in world coordinates. Shuffle and face-down default to on. A one-card deck creates a
+Deal creates all instances atomically and places them in one stack at the centre of the
+visible table, in world coordinates. Shuffle and face-down default to on. A one-card deck creates a
 standalone card. Validate set membership and the room card limit before any mutation.
 
 ## 4.3 Set-Wide Testing Lock and Forks
 
 While any room uses a set, **the set and its cards cannot be archived**, because tables
-reference those cards. Enforce this on the server and show which rooms are using the set,
-with **End room** and **Fork this set** actions.
+reference those cards. The server enforces this and lists the IDs of the rooms using it; the
+set page explains the refusal, points to **End room** in the room browser, and offers
+**Fork this set**.
 
 Everything else stays editable during a playtest. Users can create cards and edit card
 text, type, and images, and those edits appear live on every table using the set, with a
@@ -219,13 +228,9 @@ A collapsible or pop-out card browser should provide access to available card de
 
 Users should be able to browse and spawn cards onto the table.
 
-The initial browser should support sorting/filtering using:
-
-* card `name`,
-* card `type`,
-* imported source ID (`metadata.sourceId`), when present.
-
-Database card IDs are opaque UUIDs and are not shown or searched.
+The browser filters by card `name` and `type` and sorts by set order, name, or type.
+Searching imported source IDs (`metadata.sourceId`) is a possible addition. Database card
+IDs are opaque UUIDs and are not shown or searched.
 
 Cards should be draggable from the browser onto the tabletop.
 
@@ -233,9 +238,9 @@ Dragging a card definition onto the table creates a new card instance.
 
 Multiple instances of the same card definition must be allowed.
 
-The browser is scoped to the room's set and supports search and type filtering. A Decks
-section offers saved decks to deal and a “Generate & deal” action. Library edits happen
-in the set editor and obey the set-wide testing lock.
+The browser is scoped to the room's set. Its **Deal a deck** view lists saved decks to
+deal and a **Generate & deal** action. Library edits happen in the set editor and obey
+the set-wide testing lock.
 
 ---
 
@@ -283,14 +288,8 @@ Users should be able to inspect a card at approximately 2–4× its tabletop siz
 
 Magnification should preferably display a temporary preview rather than modifying the actual tabletop object's dimensions.
 
-Potential interactions include:
-
-* hover,
-* right-click,
-* keyboard modifier,
-* double-click.
-
-The exact UX can be refined during implementation.
+Hovering a card shows the magnified preview; double-click flips and right-click opens the
+context menu.
 
 ---
 
@@ -298,11 +297,8 @@ The exact UX can be refined during implementation.
 
 Cards should be removable from the tabletop.
 
-Possible interactions include:
-
-* context-menu action,
-* delete command,
-* dragging into a visible trash target.
+Cards are removed with **Delete** in the right-click menu; a visible trash target is a
+possible addition.
 
 Removal deletes only the tabletop instance, not the underlying card definition.
 
@@ -380,21 +376,24 @@ https://cards.example.com/rooms/KM7X-PQ3D
 ```
 
 Users log in with a persistent account; their display name comes from that account.
-A live-room browser lists room name, set, and connected player count. Rooms have an
-editable name and optional description, stored only in memory. Any member can edit them.
-Each room uses one set. Users may join through the browser or a shared URL.
+The lobby's room browser lists each open room's name, description, set, and player count,
+refreshes every 10 seconds, and offers **Join** and **End**. Rooms have an editable name
+and optional description, stored only in memory; any member can edit them from the room
+panel, which also shows them. Each room uses one set. Users may join through the browser
+or a shared URL. Nobody is host: every member has the same controls.
 
 Rooms end when their last member leaves and any reconnect grace expires. A stale link
 shows “This room has ended” instead of creating a replacement. Server restarts end all
 rooms. In-app departure by the last connected participant warns that the table will be
-lost and offers Cancel, Download board image, or Leave room. Browser-close warnings are
+lost and offers Cancel, Download board image, or Leave. Browser-close warnings are
 best-effort; they do not provide crash recovery. Count connections, including tabs.
+Members of an ended room return to the lobby with the reason, such as “Room ended by
+Alice.”
 
 So a forgotten open tab cannot keep a set locked, rooms also end after
 `ROOM_IDLE_TIMEOUT_MINUTES` (default 120) without table changes, with a five-minute
-in-room warning offering **Keep open** and **Download board image**. Any logged-in user
-can **End room** from the room browser or the set editor's in-use notice, after
-confirmation.
+in-room countdown offering **Keep open** and **Download board image**. Any logged-in user
+can **End room** from the room browser or the room panel, after an in-page confirmation.
 
 Rooms are created through an authenticated HTTP endpoint, never directly by a client
 socket, so that no unauthenticated request can create a room or lock a set.
@@ -466,7 +465,8 @@ release object
 
 Remote users should receive position updates frequently enough for movement to appear smooth.
 
-Approximately 15–30 updates per second should be sufficient and should be configurable.
+Approximately 15–30 updates per second should be sufficient. The client sends about
+20 per second.
 
 Interpolation may be used for remote movement if useful.
 
@@ -490,7 +490,8 @@ The implementation should remain lightweight rather than introducing a complicat
 
 # 11. Presence
 
-Users should eventually be able to see other connected users' cursors.
+Players can see which card another player is hovering. Users should eventually be able
+to see other connected users' cursors.
 
 Presence data is distinct from canonical tabletop state; neither survives room disposal.
 
@@ -638,45 +639,27 @@ library persistence, and tabletop domain functions separate.
 
 Keep application concerns separated.
 
-A possible project structure:
+The current structure:
 
 ```text
 client/
   src/
-    app/
-    components/
+    App.tsx           wouter routes; screens are lazy-loaded
+    api/              typed fetch wrapper (Zod parsing, 401 → sign in, 409 errors)
+    components/       shared UI such as ConfirmDialog
     features/
-      card-browser/
-      auth/
-      rooms/
-      sets/
-      exports/
-      tabletop/
-      presence/
-
-    tabletop/
-      Card.tsx
-      Stack.tsx
-      Table.tsx
-      interactions/
-      rendering/
-
-    multiplayer/
-      client.ts
-      commands.ts
-      subscriptions.ts
-
-    cards/
-      CardDefinition.ts
-      CardRenderer.tsx
-
-    state/
-      local-ui-state.ts
-
-    shared/
+      auth/           login/register screens, AuthProvider
+      lobby/          create/join form and room browser
+      room/           room screen, HUD, idle banner
+      card-browser/   in-room card catalog and deck dealing panel
+      sets/           set list, set page, cards/ and decks/ editors
+      tabletop/       magnify preview
+    tabletop/         Konva table, cards, stacks, interactions, board export
+    multiplayer/      MultiplayerContext, room sync, commands, endpoint
+    cards/            CardRenderer and text fitting
+    state/            local UI state
+    hooks/
 ```
-
-This is illustrative rather than mandatory.
 
 Important architectural principle:
 
@@ -698,30 +681,20 @@ rather than embedding networking logic directly throughout rendering components.
 
 # 16. Server Architecture
 
-A possible server structure:
+The current structure:
 
 ```text
 server/
   src/
-    rooms/
-      TableRoom.ts
-
-    cards/
-      load-card-catalog.ts
-      card-schema.ts
-
-    commands/
-      card/
-      stack/
-      player/
-
-    auth/
-    db/
-      migrations/
-    library/
-    config/
-    http/
-    shared/
+    index.ts          Express + Colyseus bootstrap
+    rooms/            TableRoom, library binding, idle timeout, room creation registry
+    commands/         card/, stack/, deck/, player/ domain operations
+    auth/             passwords, sessions, middleware, routes, create-user CLI
+    db/               connection, migrations, repositories
+    library/          card cache, workspace service, fork, export, generator, importer, usage locks
+    http/             room and workspace routes, shared request/error helpers
+    cards/            card-file loader used by the importer
+    config/           environment
 ```
 
 Room command handlers should be separated from the room lifecycle where practical.
@@ -894,7 +867,8 @@ Only the static client bundle, login, passcode-gated registration, and the healt
 are public. Every other API route, image serving, room listing, room creation, and room
 joins require a session. Enforce this once at the router level and test it. Apply
 basic login/signup and command rate limits. Account identity supplies the player name;
-multiple tabs get separate player IDs. Remove room passwords and host-only access rules.
+multiple tabs get separate player IDs. There are no room passwords, hosts, or host-only
+access rules.
 
 Every authenticated user shares the workspace. Do not add OAuth, ownership, or roles.
 
@@ -932,8 +906,8 @@ reverse proxy is the alternative. Set `COOKIE_SECURE=true` and `TRUST_PROXY` so 
 limits see real client IPs (`CF-Connecting-IP` behind Cloudflare).
 
 Document `DATA_DIR`, `AUTH_PEPPER`, `SIGNUP_PASSCODE`, `COOKIE_SECURE`, `TRUST_PROXY`,
-`ROOM_IDLE_TIMEOUT_MINUTES`, and `PUBLIC_CLIENT_URL`. Keep the old
-cards directory only as optional importer input. Back up SQLite with `VACUUM INTO` or
+`TRUST_CLOUDFLARE_IP`, `ROOM_IDLE_TIMEOUT_MINUTES`, and `PUBLIC_CLIENT_URL` (see the README
+and `docs/hosting.md`). Keep the old cards directory only as optional importer input. Back up SQLite with `VACUUM INTO` or
 the backup API, plus image files; preserve the pepper separately. Include restore
 instructions before the team relies on the deployment. Deploys/restarts end live rooms.
 
@@ -999,7 +973,7 @@ Do not prematurely implement a generic entity/component system, but keep domain 
 
 # 25. Shared Workspace Delivery Scope
 
-Build on the existing tabletop MVP. The next delivery includes:
+Delivered in PRs #20–#32. The delivery included:
 
 - Persistent accounts and authenticated shared workspace access.
 - Database-backed sets/cards, image uploads and selection, card editor, and file import.
@@ -1012,8 +986,19 @@ Build on the existing tabletop MVP. The next delivery includes:
 - Set ZIP export and board PNG download.
 - Docker volume, TLS setup, backup/restore documentation.
 
-Follow the phase order in the archived [Persistent Workspace Plan](archive/persistent-workspace.md): database,
-accounts, sets/cards with usage locks, decks/forks, room UX/exports, deployment documentation.
+It followed the phase order in the archived [Persistent Workspace Plan](archive/persistent-workspace.md):
+database, accounts, sets/cards with usage locks, decks/forks, room UX/exports, deployment
+documentation.
+
+Known gaps in the delivered scope (details in [data-models.md §75](data-models.md)):
+
+- Archiving/restoring single cards and deleting/duplicating decks are API-only; there are
+  no buttons yet.
+- The in-use notice lists room IDs and sends users to the room browser to end rooms,
+  rather than offering **End room** itself.
+- A generated deck cannot be opened in the deck editor before saving.
+- The card browser does not search `metadata.sourceId`.
+- No pan/zoom yet.
 
 Deferred: cursor presence, pen/text annotations, hands, zones, dice, tokens, generator
 quotas/weights, CSV/printable sheets, and export reimport UI. Persistent rooms, ownership
@@ -1071,7 +1056,8 @@ This should remain a relatively small application whose complexity grows primari
 
 The [data-models.md](data-models.md) specification defines the domain model and multiplayer
 protocol. The archived [workspace plan](archive/persistent-workspace.md) supplies the schema sketch and
-implementation phases. These documents describe the target, not implementation status.
+implementation phases. These documents describe the implemented system; each lists its
+remaining gaps.
 
 That document covers:
 

@@ -16,7 +16,7 @@ No rulesets are supported; this is more like a basic Tabletop Simulator.
 | **Set** | One version of the game, with its own cards. Sets are independent of each other. |
 | **Card** | A card definition in a set: name, type, body text, and square artwork. |
 | **Deck** | A saved list of cards and copy counts from one set. |
-| **Room** | A temporary table bound to one set. It ends when everyone has left. |
+| **Room** | A temporary table bound to one set. It ends when everyone has left, when it sits idle too long, or when someone ends it. |
 
 Accounts, sets, cards, decks, and images persist in a SQLite database. Rooms and
 everything placed on a table do not.
@@ -29,6 +29,7 @@ server/   Node.js + Colyseus + Express (auth, library API, TableRoom)
 client/   React + Vite + react-konva (tabletop UI)
 cards/    sample card files (.jpg/.png + .json) for the importer
 docs/     hosting and backup guide
+planning/ product spec, data model and protocol spec, archived plans
 ```
 
 This is an npm workspaces monorepo.
@@ -60,7 +61,7 @@ Other useful scripts:
 
 ```bash
 npm test            # run server and client tests
-npm run coverage    # tests plus coverage summaries; HTML in server/coverage and client/coverage
+npm run coverage    # tests plus coverage; fails below 60%; HTML in server/coverage and client/coverage
 npm run typecheck   # type-check all workspaces
 npm run build       # build shared, server, and client
 ```
@@ -89,6 +90,7 @@ Set these in `.env` (Compose reads it automatically):
 | `COOKIE_SECURE` | `false` | Set to `true` when serving the public site over HTTPS |
 | `TRUST_PROXY` | `1` | Trusted reverse-proxy hop count for client IP/rate limiting |
 | `TRUST_CLOUDFLARE_IP` | `false` | Rate-limit by `CF-Connecting-IP`; only when every request comes through Cloudflare |
+| `ROOM_IDLE_TIMEOUT_MINUTES` | `120` | Minutes without a table change before a room ends; members get a 5-minute warning |
 
 So to fit a host that only exposes 9000–9999:
 
@@ -148,10 +150,14 @@ Each import creates a new, independent set. Re-importing the same folder creates
 second set rather than updating the first. Imported artwork is stored by content
 hash under `DATA_DIR/images`.
 
-The browser library supports creating, renaming, archiving, restoring, forking, and
-exporting sets. A set's Cards tab provides search, type filtering, image upload and
-reuse, and live card previews. Its Decks tab supports manual deck building and seeded
-random generation.
+You can also build sets in the browser: **Manage card sets** in the lobby opens the set
+library, where you can create, rename, archive, unarchive, fork, and export sets
+(export downloads a ZIP of `set.json` plus artwork). A set's **Cards** tab provides
+search, type filtering, image upload and reuse, and a live card preview. Its **Decks**
+tab supports building decks by copy count and seeded random generation.
+
+While a room is playing a set, the set and its cards cannot be archived, but card edits
+are allowed and show up live on the table. To freeze a version for testing, fork the set.
 
 ### Card file format
 
@@ -183,11 +189,14 @@ Each card is two files with the **same filename stem** (e.g., `fireball.jpg` and
 This app provides a generic, unopinionated tabletop environment. It does not enforce
 game rules; it provides the primitives to simulate physical card interactions:
 
-1. **Rooms:** Sign in, pick a set, name the room, and create it. Share the room link
-   with other signed-in players. A room ends when the last person leaves.
-2. **Card browser:** Open the side panel to browse the cards of the room's set.
-3. **Spawning cards and decks:** Drag a card onto the table, deal a saved deck, or
-   generate and deal a shuffled deck from the side panel.
+1. **Rooms:** Sign in, pick a set, name the room (a description is optional), and create
+   it. Share the room link with other signed-in players, or join an open room from the
+   lobby's room list. Everyone in a room has the same controls; there is no host.
+2. **Card browser:** **Open Catalog** shows the cards of the room's set, filterable by
+   name or type.
+3. **Spawning cards and decks:** Drag a card from the catalog onto the table. **Deal a
+   deck** in the catalog deals a saved deck, or generates one and deals it, as a
+   shuffled, face-down stack.
 4. **Basic interactions:**
    - **Move:** Drag and drop cards anywhere on the table.
    - **Preview:** Hover over a card to view a magnified preview.
@@ -199,9 +208,15 @@ game rules; it provides the primitives to simulate physical card interactions:
    - **Interact:** Dragging a stack moves the entire stack. Right-clicking a stack lets
      you draw the top card, shuffle, or delete the stack.
 6. **Board image:** **Download board image** in the room panel saves a PNG of the
-   whole table.
-7. **Room lifecycle:** Anyone can edit the room details or end the room. Idle rooms
-   show a warning before closing; **Keep open** resets the timer.
+   whole table, named after the room.
+7. **Room lifecycle:**
+   - **Edit details** in the room panel changes the room's name and description.
+   - **End room**, in the room panel or the lobby's room list, ends a room for everyone
+     after a confirmation; they return to the lobby with "Room ended by …".
+   - A room with no table changes for `ROOM_IDLE_TIMEOUT_MINUTES` ends on its own.
+     Five minutes before, a countdown appears; **Keep open** resets the timer.
+   - If you are the last person in the room, **Leave room** warns that the table will be
+     discarded and offers to download the board image first.
 
 ## Test cards
 
