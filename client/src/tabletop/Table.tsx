@@ -22,6 +22,7 @@ import { SnapTargetOutline } from "./SnapTargetOutline";
 import { HoverAttribution, resolveHoverHighlights } from "./HoverAttribution";
 import { resolveRenderedCardPositions, staleLocalDragIds } from "./card-positions";
 import { useHoverReporter } from "./interactions/hover-reporter";
+import { TABLE_BACKGROUND_COLOR, tableObjectsInZOrder } from "./table-objects";
 
 export function Table() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -142,7 +143,7 @@ export function Table() {
       {size.width > 0 && size.height > 0 && (
         <Stage width={size.width} height={size.height}>
           <Layer>
-            <Rect width={size.width} height={size.height} fill="#0b3d24" />
+            <Rect width={size.width} height={size.height} fill={TABLE_BACKGROUND_COLOR} />
 
             <Group
               x={DEFAULT_VIEWPORT.x}
@@ -150,65 +151,59 @@ export function Table() {
               scaleX={DEFAULT_VIEWPORT.scale}
               scaleY={DEFAULT_VIEWPORT.scale}
             >
-              {[...cards.filter((card) => card.stackId === undefined).map((card) => ({
-                kind: "card" as const, zIndex: card.zIndex, card,
-              })), ...stacks.map((stack) => ({
-                kind: "stack" as const, zIndex: stack.zIndex, stack,
-              }))]
-                .sort((a, b) => a.zIndex - b.zIndex)
-                .map((object) => {
-                  if (object.kind === "stack") return (
-                    <Stack key={object.stack.id} stack={object.stack}
-                      position={stackDrag.localPositions[object.stack.id] ?? object.stack}
-                      cards={cardsById}
-                      definitionsById={definitionsById}
-                      onDragStart={stackDrag.startDrag}
-                      onDragMove={stackDrag.moveDrag}
-                      onDragEnd={(stackId, position) => { void stackDrag.endDrag(stackId, position); }}
-                      onTopFlip={(cardId) => { void multiplayer.flipCard(cardId); }}
-                      onTopContextMenu={(cardId, stackId, position) => {
-                        setCardMenu({ cardId, stackId, ...position });
-                      }}
-                      onTopHoverStart={hover.hoverStart}
-                      onTopHoverEnd={hover.hoverEnd}
-                    />
-                  );
-                  const card = object.card;
-                  const definition: CardDefinition | undefined = definitionsById.get(
-                    card.definitionId,
-                  );
-                  if (!definition) return null;
-                  const position = renderedPositions.get(card.id) ?? { x: card.x, y: card.y };
-                  return (
-                    <Card
-                      key={card.id}
-                      definition={definition}
-                      {...card}
-                      {...position}
-                      onDragStart={drag.startDrag}
-                      onDragMove={drag.moveDrag}
-                      onDragEnd={(cardId, nextPosition) => {
-                        const target = findStackTarget(cardId, nextPosition, cards, stacks);
-                        void drag.endDrag(cardId, nextPosition, target);
-                      }}
-                      onFlip={(cardId) => {
-                        void multiplayer.flipCard(cardId).catch((cause: unknown) => {
-                          console.warn("Card flip rejected:", cause);
-                        });
-                      }}
-                      onContextMenu={(cardId, position) => {
-                        setCardMenu({ cardId, ...position });
-                      }}
-                      onHoverStart={hover.hoverStart}
-                      onHoverEnd={hover.hoverEnd}
-                      onBringToFront={(cardId) => {
-                        void multiplayer.bringToFront(cardId).catch((cause: unknown) => {
-                          console.warn("Bring-to-front rejected:", cause);
-                        });
-                      }}
-                    />
-                  );
-                })}
+              {tableObjectsInZOrder(cards, stacks).map((object) => {
+                if (object.kind === "stack") return (
+                  <Stack key={object.stack.id} stack={object.stack}
+                    position={stackDrag.localPositions[object.stack.id] ?? object.stack}
+                    cards={cardsById}
+                    definitionsById={definitionsById}
+                    onDragStart={stackDrag.startDrag}
+                    onDragMove={stackDrag.moveDrag}
+                    onDragEnd={(stackId, position) => { void stackDrag.endDrag(stackId, position); }}
+                    onTopFlip={(cardId) => { void multiplayer.flipCard(cardId); }}
+                    onTopContextMenu={(cardId, stackId, position) => {
+                      setCardMenu({ cardId, stackId, ...position });
+                    }}
+                    onTopHoverStart={hover.hoverStart}
+                    onTopHoverEnd={hover.hoverEnd}
+                  />
+                );
+                const card = object.card;
+                const definition: CardDefinition | undefined = definitionsById.get(
+                  card.definitionId,
+                );
+                if (!definition) return null;
+                const position = renderedPositions.get(card.id) ?? { x: card.x, y: card.y };
+                return (
+                  <Card
+                    key={card.id}
+                    definition={definition}
+                    {...card}
+                    {...position}
+                    onDragStart={drag.startDrag}
+                    onDragMove={drag.moveDrag}
+                    onDragEnd={(cardId, nextPosition) => {
+                      const target = findStackTarget(cardId, nextPosition, cards, stacks);
+                      void drag.endDrag(cardId, nextPosition, target);
+                    }}
+                    onFlip={(cardId) => {
+                      void multiplayer.flipCard(cardId).catch((cause: unknown) => {
+                        console.warn("Card flip rejected:", cause);
+                      });
+                    }}
+                    onContextMenu={(cardId, position) => {
+                      setCardMenu({ cardId, ...position });
+                    }}
+                    onHoverStart={hover.hoverStart}
+                    onHoverEnd={hover.hoverEnd}
+                    onBringToFront={(cardId) => {
+                      void multiplayer.bringToFront(cardId).catch((cause: unknown) => {
+                        console.warn("Bring-to-front rejected:", cause);
+                      });
+                    }}
+                  />
+                );
+              })}
               {/* Drawn above the cards so an outline is never hidden by the
                   card stacked on top of the one it marks. */}
               {hoverHighlights.map((highlight) => (
