@@ -45,6 +45,31 @@ function typeInto(label: string | RegExp, value: string) {
 }
 
 describe("Lobby", () => {
+  it("puts card-set management in the workspace header outside the room form", () => {
+    render(<Lobby />);
+
+    const link = screen.getByRole("link", { name: "Card sets" });
+    expect(link).toHaveAttribute("href", "/sets");
+    expect(link.closest("form")).toBeNull();
+    // No empty-workspace hint while the set list is still loading.
+    expect(screen.queryByText(/before opening a room/)).toBeNull();
+  });
+
+  it("links to card-set creation when the workspace has no sets", async () => {
+    const json = (body: unknown) => new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => path === "/api/sets"
+      ? json({ sets: [] })
+      : json({ rooms: [] })));
+
+    render(<Lobby />);
+
+    expect(await screen.findByText(/before opening a room/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "card set" })).toHaveAttribute("href", "/sets");
+  });
+
   it("creates a set-scoped room through the HTTP-backed flow", async () => {
     render(<Lobby />);
     await waitFor(() => expect(screen.getByLabelText("Card set")).toHaveValue("set-1"));

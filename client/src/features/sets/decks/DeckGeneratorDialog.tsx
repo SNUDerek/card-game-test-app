@@ -9,6 +9,7 @@ import {
 import { apiRequest } from "../../../api/client";
 import { errorMessage } from "../errors";
 import { DeckResponseSchema, generateDeck, totalCopies } from "./deck-api";
+import "../editor-dialog.css";
 
 /** Rolls a random deck from the set's cards, then optionally saves it. */
 export function DeckGeneratorDialog({

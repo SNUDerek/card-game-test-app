@@ -23,6 +23,7 @@ import { HoverAttribution, resolveHoverHighlights } from "./HoverAttribution";
 import { resolveRenderedCardPositions, staleLocalDragIds } from "./card-positions";
 import { useHoverReporter } from "./interactions/hover-reporter";
 import { TABLE_BACKGROUND_COLOR, tableObjectsInZOrder } from "./table-objects";
+import { CardEditor } from "../features/sets/cards/CardEditor";
 
 export function Table() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -55,11 +56,15 @@ export function Table() {
   );
   const { magnifiedCardId, magnifyCard, clearMagnifiedCard } = useLocalUiState();
   const [cardMenu, setCardMenu] = useState<CardMenuState | null>(null);
+  const [editingDefinitionId, setEditingDefinitionId] = useState<string | null>(null);
   // The menu acts on live card state, so it closes itself if the card is
   // deleted or restacked by another player while it is open.
   const menuCard = cardMenu ? cards.find((card) => card.id === cardMenu.cardId) : undefined;
   const menuStack = cardMenu?.stackId
     ? stacks.find((stack) => stack.id === cardMenu.stackId)
+    : undefined;
+  const editingDefinition = editingDefinitionId
+    ? definitionsById.get(editingDefinitionId)
     : undefined;
   const cardsById = useMemo(() => new Map(cards.map((card) => [card.id, card])), [cards]);
   const snapTarget = useMemo(() => {
@@ -229,7 +234,19 @@ export function Table() {
           stack={menuStack}
           commands={multiplayer}
           onMagnify={magnifyCard}
+          onEdit={(cardId) => {
+            const card = cards.find((candidate) => candidate.id === cardId);
+            if (card) setEditingDefinitionId(card.definitionId);
+          }}
           onClose={() => setCardMenu(null)}
+        />
+      )}
+      {editingDefinition && (
+        <CardEditor
+          setId={editingDefinition.setId}
+          card={editingDefinition}
+          onClose={() => setEditingDefinitionId(null)}
+          onSaved={() => setEditingDefinitionId(null)}
         />
       )}
     </div>

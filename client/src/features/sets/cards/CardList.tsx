@@ -35,10 +35,12 @@ export function CardList({
       </div>
       <section className="card-grid" aria-label="Cards">
         {filtered.map((card) => (
-          <button className="card-tile" type="button" key={card.id} onClick={() => onEdit(card)}>
+          <button className="card-tile" type="button" key={card.id} title={card.body}
+            onClick={() => onEdit(card)}>
             <img src={card.imageUrl} alt="" />
             <strong>{card.name}</strong>
             <small>{card.type}</small>
+            {card.body && <p className="card-tile-body">{card.body}</p>}
           </button>
         ))}
         {filtered.length === 0 && <p className="workspace-muted">No matching cards.</p>}

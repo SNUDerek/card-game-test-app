@@ -9,6 +9,7 @@ import {
 import { ApiConflictError, apiRequest } from "../../../api/client";
 import { errorMessage } from "../errors";
 import { DeckResponseSchema, totalCopies } from "./deck-api";
+import "../editor-dialog.css";
 
 function clampCopies(value: number): number {
   return Number.isFinite(value) ? Math.min(MAX_DECK_ENTRY_COPIES, Math.max(0, Math.trunc(value))) : 0;

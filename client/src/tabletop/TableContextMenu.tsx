@@ -27,6 +27,8 @@ interface TableContextMenuProps {
    * client is looking at and sends nothing, so it is kept out of `commands`.
    */
   onMagnify(cardId: string): void;
+  /** Opens local library UI; editing definitions is not a room command. */
+  onEdit(cardId: string): void;
   onClose(): void;
 }
 
@@ -42,6 +44,7 @@ export function TableContextMenu({
   stack,
   commands,
   onMagnify,
+  onEdit,
   onClose,
 }: TableContextMenuProps) {
   const run = (label: string, command: Promise<void>) => {
@@ -78,6 +81,18 @@ export function TableContextMenu({
       >
         Magnify
       </button>
+      {card.face === "front" && (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            onEdit(card.id);
+            onClose();
+          }}
+        >
+          Edit card…
+        </button>
+      )}
       {stack && (
         <button
           type="button"

@@ -22,6 +22,7 @@ const commands = {
   deleteStack: vi.fn().mockResolvedValue(undefined),
 };
 const onMagnify = vi.fn();
+const onEdit = vi.fn();
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -33,6 +34,7 @@ describe("TableContextMenu", () => {
       card={card}
       commands={commands}
       onMagnify={onMagnify}
+      onEdit={onEdit}
       onClose={onClose}
     />);
 
@@ -50,6 +52,7 @@ describe("TableContextMenu", () => {
       stack={stack}
       commands={commands}
       onMagnify={onMagnify}
+      onEdit={onEdit}
       onClose={vi.fn()}
     />);
 
@@ -66,6 +69,7 @@ describe("TableContextMenu", () => {
       card={card}
       commands={commands}
       onMagnify={onMagnify}
+      onEdit={onEdit}
       onClose={vi.fn()}
     />);
     expect(screen.queryByRole("menuitem", { name: "Shuffle" })).not.toBeInTheDocument();
@@ -77,6 +81,7 @@ describe("TableContextMenu", () => {
       stack={stack}
       commands={commands}
       onMagnify={onMagnify}
+      onEdit={onEdit}
       onClose={onClose}
     />);
 
@@ -93,6 +98,7 @@ describe("TableContextMenu", () => {
       card={card}
       commands={commands}
       onMagnify={onMagnify}
+      onEdit={onEdit}
       onClose={onClose}
     />);
 
@@ -101,6 +107,37 @@ describe("TableContextMenu", () => {
     expect(onMagnify).toHaveBeenCalledWith(card.id);
     expect(onClose).toHaveBeenCalled();
     for (const command of Object.values(commands)) expect(command).not.toHaveBeenCalled();
+  });
+
+  it("opens the definition editor locally and closes the menu", () => {
+    const onClose = vi.fn();
+    render(<TableContextMenu
+      menu={{ cardId: card.id, x: 100, y: 200 }}
+      card={card}
+      commands={commands}
+      onMagnify={onMagnify}
+      onEdit={onEdit}
+      onClose={onClose}
+    />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit card…" }));
+
+    expect(onEdit).toHaveBeenCalledWith(card.id);
+    expect(onClose).toHaveBeenCalled();
+    for (const command of Object.values(commands)) expect(command).not.toHaveBeenCalled();
+  });
+
+  it("does not reveal the editor action for a face-down card", () => {
+    render(<TableContextMenu
+      menu={{ cardId: card.id, x: 100, y: 200 }}
+      card={{ ...card, face: "back" }}
+      commands={commands}
+      onMagnify={onMagnify}
+      onEdit={onEdit}
+      onClose={vi.fn()}
+    />);
+
+    expect(screen.queryByRole("menuitem", { name: "Edit card…" })).not.toBeInTheDocument();
   });
 
   it("reports rejected stack commands consistently", async () => {
@@ -112,6 +149,7 @@ describe("TableContextMenu", () => {
       stack={stack}
       commands={commands}
       onMagnify={onMagnify}
+      onEdit={onEdit}
       onClose={vi.fn()}
     />);
 
