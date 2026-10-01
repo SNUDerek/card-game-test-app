@@ -1,4 +1,5 @@
 import { Client } from "@colyseus/sdk";
+import { useLocation } from "wouter";
 import {
   createContext,
   useCallback,
@@ -9,12 +10,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type {
-  CardInstance,
-  CardStack,
-  Player,
-  PlayerId,
-  RoomId,
+import {
+  ROOM_EVENTS,
+  type CardInstance,
+  type CardStack,
+  type CatalogChangedEvent,
+  type Player,
+  type PlayerId,
+  type RoomId,
 } from "@card-table/shared";
 import { requestSession } from "./commands";
 import { resolveServerEndpoint } from "./endpoint";
@@ -49,6 +52,8 @@ interface MultiplayerValue extends TableCommands {
   invitedRoomId: RoomId | null;
   selfPlayerId: PlayerId | null;
   hostPlayerId: PlayerId;
+  /** The library set the joined room plays; empty when not connected. */
+  setId: string;
   players: Player[];
   cards: CardInstance[];
   stacks: CardStack[];
@@ -56,6 +61,8 @@ interface MultiplayerValue extends TableCommands {
   createRoom(request: CreateRoomRequest): Promise<void>;
   joinRoom(request: JoinRoomRequest): Promise<void>;
   leaveRoom(): Promise<void>;
+  /** Listens for library edits to the room's set. Returns an unsubscribe function. */
+  subscribeCatalogChanges(listener: (event: CatalogChangedEvent) => void): () => void;
 }
 
 const MultiplayerContext = createContext<MultiplayerValue | null>(null);
@@ -65,16 +72,19 @@ function serverEndpoint(): string {
 }
 
 export function MultiplayerProvider({ children }: { children: ReactNode }) {
+  const [location, navigate] = useLocation();
   const client = useMemo(() => new Client(serverEndpoint()), []);
   const roomRef = useRef<TableRoom | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [roomId, setRoomId] = useState<RoomId | null>(null);
-  const [invitedRoomId, setInvitedRoomId] = useState<RoomId | null>(() =>
-    parseRoomIdFromPath(window.location.pathname),
-  );
+  // Only the URL the page loaded with can resume a stored seat; later
+  // navigation (including our own after joining) must not reconnect.
+  const [initialRoomId] = useState(() => parseRoomIdFromPath(location));
+  const [invitedRoomId, setInvitedRoomId] = useState<RoomId | null>(initialRoomId);
   const [selfPlayerId, setSelfPlayerId] = useState<PlayerId | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const { players, cards, stacks, hostPlayerId, syncRoom, resetSync } = useRoomSync();
+  const { players, cards, stacks, hostPlayerId, setId, syncRoom, resetSync } = useRoomSync();
+  const catalogListeners = useRef(new Set<(event: CatalogChangedEvent) => void>());
   const commands = useTableCommands(roomRef);
 
   const resetSession = useCallback(() => {
@@ -90,6 +100,10 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       roomRef.current = room;
 
       syncRoom(room);
+      room.onMessage(ROOM_EVENTS.CATALOG_CHANGED, (event: CatalogChangedEvent) => {
+        if (roomRef.current !== room) return;
+        for (const listener of catalogListeners.current) listener(event);
+      });
       room.onLeave(() => {
         if (roomRef.current !== room) return;
         // The seat is gone for good by now: the SDK retries transient drops on
@@ -113,9 +127,9 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       setStatus("connected");
       setConnectionError(null);
       storeSession({ roomId: room.roomId, reconnectionToken: room.reconnectionToken });
-      window.history.pushState({}, "", roomPath(room.roomId));
+      navigate(roomPath(room.roomId));
     },
-    [resetSession, syncRoom],
+    [navigate, resetSession, syncRoom],
   );
 
   const connect = useCallback(
@@ -161,18 +175,18 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     resetSession();
     setInvitedRoomId(null);
     setConnectionError(null);
-    window.history.pushState({}, "", "/");
+    navigate("/");
     if (room) await room.leave();
-  }, [resetSession]);
+  }, [navigate, resetSession]);
 
   // Do not call room.leave() from an unmount cleanup. A reload must close the
   // transport without consent so the server reserves this player's seat and
   // the stored reconnection token remains usable.
 
-  // A reload lands back on /room/<id> with the seat still reserved during the
+  // A reload lands back on /rooms/<id> with the seat still reserved during the
   // server's grace period, so resume it before showing the lobby.
   useEffect(() => {
-    const stored = readStoredSession(parseRoomIdFromPath(window.location.pathname));
+    const stored = readStoredSession(initialRoomId);
     if (!stored) return;
 
     let active = true;
@@ -195,7 +209,17 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [attachRoom, client]);
+  }, [attachRoom, client, initialRoomId]);
+
+  const subscribeCatalogChanges = useCallback(
+    (listener: (event: CatalogChangedEvent) => void) => {
+      catalogListeners.current.add(listener);
+      return () => {
+        catalogListeners.current.delete(listener);
+      };
+    },
+    [],
+  );
 
   const value = useMemo<MultiplayerValue>(
     () => ({
@@ -205,6 +229,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       invitedRoomId,
       selfPlayerId,
       hostPlayerId,
+      setId,
       players,
       cards,
       stacks,
@@ -212,6 +237,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       createRoom,
       joinRoom,
       leaveRoom,
+      subscribeCatalogChanges,
     }),
     [
       commands,
@@ -220,6 +246,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       invitedRoomId,
       selfPlayerId,
       hostPlayerId,
+      setId,
       players,
       cards,
       stacks,
@@ -227,6 +254,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       createRoom,
       joinRoom,
       leaveRoom,
+      subscribeCatalogChanges,
     ],
   );
 

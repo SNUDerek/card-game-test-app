@@ -3,6 +3,7 @@ import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom } from "colyseus";
 import { ROOM_COMMANDS, TABLE_COMMANDS, type SessionResult } from "@card-table/shared";
 import { TableRoom } from "./TableRoom.js";
+import { fixedCardLibrary } from "./test-card-library.js";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -20,7 +21,8 @@ describe("TableRoom sessions", () => {
   beforeAll(async () => {
     colyseus = await boot({
       rooms: { table: defineRoom(TableRoom, {
-        cardDefinitionIds: ["spell-1"],
+        setId: "set-1",
+        cardLibrary: fixedCardLibrary(["spell-1"]),
         authenticate: (_cookie, options) => {
           const displayName = String((options as { displayName?: string })?.displayName ?? "").trim();
           return displayName ? { id: `user-${displayName}`, username: displayName, displayName } : undefined;

@@ -28,7 +28,7 @@ export class WorkspaceService {
     this.sets = new SetRepository(db);
     this.cards = new CardRepository(db);
     this.decks = new DeckRepository(db);
-    this.cardLibrary = new CardLibrary(db);
+    this.cardLibrary = new CardLibrary(db, this.sets, this.cards);
   }
 
   listSets(includeArchived = false): CardSetSummary[] {
@@ -48,19 +48,24 @@ export class WorkspaceService {
   updateSet(id: string, input: UpdateCardSetRequest & { archived?: boolean }, userId: string) {
     return this.db.transaction(() => {
       let set = this.sets.require(id);
-      if (set.revision !== input.revision) throw new LibraryError("conflict", "Set has changed; reload and try again.");
+      if (set.revision !== input.revision) {
+        throw new LibraryError("stale_revision", "Set has changed; reload and try again.");
+      }
       if (input.name !== undefined || input.description !== undefined) {
         set = this.cardLibrary.updateSet(id, set.revision, { name: input.name, description: input.description }, userId);
       }
       if (input.archived !== undefined && input.archived !== set.archived) {
         if (input.archived) this.requireUnused(id);
-        set = this.sets.setArchived(id, input.archived);
+        set = this.cardLibrary.setArchived(id, input.archived, userId);
       }
       return set;
     })();
   }
 
-  archiveSet(id: string) { this.requireUnused(id); return this.sets.setArchived(id, true); }
+  archiveSet(id: string, userId: string) {
+    this.requireUnused(id);
+    return this.cardLibrary.setArchived(id, true, userId);
+  }
   forkSet(id: string, name: string, userId: string) { return forkSet(this.db, id, name, userId); }
 
   listCards(setId: string, includeArchived = false): LibraryCard[] {
@@ -83,13 +88,22 @@ export class WorkspaceService {
     return this.cardLibrary.archiveCard(id, userId);
   }
 
+  restoreCard(id: string, userId: string) {
+    const card = this.cards.require(id);
+    this.requireActiveSet(card.setId, "restoring its cards");
+    return this.cardLibrary.restoreCard(id, userId);
+  }
+
   listDecks(setId: string) {
     this.sets.require(setId);
     return this.decks.listBySet(setId);
   }
 
   getDeck(id: string) { return this.decks.require(id); }
-  createDeck(setId: string, input: SaveDeckRequest, userId: string) { return this.decks.create(setId, input, userId); }
+  createDeck(setId: string, input: SaveDeckRequest, userId: string) {
+    this.requireActiveSet(setId, "creating a deck");
+    return this.decks.create(setId, input, userId);
+  }
   updateDeck(id: string, input: UpdateDeckRequest, userId: string) {
     const { revision, ...content } = input;
     return this.decks.update(id, revision, content, userId);
@@ -97,6 +111,7 @@ export class WorkspaceService {
   deleteDeck(id: string) { return this.decks.delete(id); }
   duplicateDeck(id: string, name: string | undefined, userId: string) {
     const source = this.decks.require(id);
+    this.requireActiveSet(source.setId, "duplicating a deck");
     return this.decks.duplicate(id, name ?? `${source.name} copy`, userId);
   }
 
@@ -129,6 +144,12 @@ export class WorkspaceService {
 
   private requireUnused(setId: string): void {
     const rooms = this.usage?.roomsUsing(setId) ?? [];
-    if (rooms.length) throw new LibraryError("conflict", `Set is in use by rooms: ${rooms.join(", ")}.`);
+    if (rooms.length) throw new LibraryError("in_use", `Set is in use by rooms: ${rooms.join(", ")}.`);
+  }
+
+  private requireActiveSet(setId: string, action: string): void {
+    if (this.sets.require(setId).archived) {
+      throw new LibraryError("conflict", `Restore this set before ${action}.`);
+    }
   }
 }

@@ -11,6 +11,7 @@ import { highestTableZIndex } from "../stack/stack-helpers.js";
  * limiting only slows that down, it does not stop it.
  */
 export const MAX_CARDS_PER_ROOM = 500;
+/** Which card definitions may be spawned. A room's is a live view of its set. */
 export interface CardDefinitionLookup { has(id: CardDefinitionId): boolean }
 
 export function spawnCard(

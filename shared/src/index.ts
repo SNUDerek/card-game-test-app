@@ -7,4 +7,3 @@ export * from "./library.js";
 export * from "./room.js";
 export * from "./commands.js";
 export * from "./auth.js";
-export * from "./library.js";

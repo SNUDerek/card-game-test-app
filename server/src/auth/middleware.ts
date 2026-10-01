@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import type { CurrentUser } from "@card-table/shared";
 import { readCookie, SESSION_COOKIE, type SessionRepository } from "./sessions.js";
+import { setSessionCookie } from "./cookies.js";
 
 export interface AuthenticatedRequest extends Request {
   user: CurrentUser;
@@ -10,22 +11,22 @@ export interface AuthenticatedRequest extends Request {
 export function findRequestUser(
   cookieHeader: string | null | undefined,
   sessions: SessionRepository,
-): { user: CurrentUser; token: string } | undefined {
+): { user: CurrentUser; token: string; slid: boolean } | undefined {
   const token = readCookie(cookieHeader, SESSION_COOKIE);
   if (!token) return undefined;
-  const user = sessions.findUser(token);
-  return user ? { user, token } : undefined;
+  const result = sessions.findUser(token);
+  return result ? { user: result.user, token, slid: result.slid } : undefined;
 }
 
-export function requireUser(sessions: SessionRepository) {
+export function requireUser(sessions: SessionRepository, cookieSecure: boolean) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const auth = findRequestUser(req.headers.cookie, sessions);
     if (!auth) {
       res.status(401).json({ error: "Authentication required." });
       return;
     }
+    if (auth.slid) setSessionCookie(res, auth.token, cookieSecure);
     Object.assign(req, { user: auth.user, sessionToken: auth.token });
     next();
   };
 }
-

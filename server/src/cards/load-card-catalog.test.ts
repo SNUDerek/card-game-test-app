@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CardCatalogError, loadCardCatalog } from "./load-card-catalog.js";
+import { CardCatalogError, loadCardSources } from "./load-card-catalog.js";
 
 let dir: string | undefined;
 
@@ -53,26 +53,27 @@ async function makeDir(): Promise<string> {
   return dir;
 }
 
-describe("loadCardCatalog", () => {
-  it("loads valid card pairs into a catalog", async () => {
+describe("loadCardSources", () => {
+  it("loads valid card pairs with their artwork paths", async () => {
     const cardsDir = await makeDir();
     await writeCard(cardsDir, "red_potion", {
       json: { id: "item-red-potion", type: "item", body: "Restores health." },
     });
 
-    const catalog = await loadCardCatalog(cardsDir);
+    const sources = await loadCardSources(cardsDir);
 
-    expect(catalog.size).toBe(1);
-    const card = catalog.get("item-red-potion");
-    expect(card).toMatchObject({
-      id: "item-red-potion",
-      name: "Red Potion",
-      type: "item",
-      body: "Restores health.",
-      imageUrl: "/cards/red_potion.png",
-      sourceName: "red_potion",
-    });
-    expect(card?.metadata).toBeUndefined();
+    expect(sources).toEqual([
+      {
+        definition: {
+          id: "item-red-potion",
+          name: "Red Potion",
+          type: "item",
+          body: "Restores health.",
+        },
+        stem: "red_potion",
+        imagePath: path.join(cardsDir, "red_potion.png"),
+      },
+    ]);
   });
 
   it("preserves unknown JSON fields as metadata", async () => {
@@ -81,26 +82,24 @@ describe("loadCardCatalog", () => {
       json: { id: "creature-goblin", type: "creature", body: "...", flavor: "Sneaky." },
     });
 
-    const catalog = await loadCardCatalog(cardsDir);
-    expect(catalog.get("creature-goblin")?.metadata).toEqual({ flavor: "Sneaky." });
+    const [source] = await loadCardSources(cardsDir);
+    expect(source?.definition.metadata).toEqual({ flavor: "Sneaky." });
   });
 
-  it("URL-encodes image filenames as a single static-route path segment", async () => {
+  it("returns cards sorted by file stem", async () => {
     const cardsDir = await makeDir();
-    await writeCard(cardsDir, "magic #1", {
-      json: { id: "item-magic-one", type: "item", body: "..." },
-    });
+    await writeCard(cardsDir, "zebra");
+    await writeCard(cardsDir, "apple");
 
-    const catalog = await loadCardCatalog(cardsDir);
-
-    expect(catalog.get("item-magic-one")?.imageUrl).toBe("/cards/magic%20%231.png");
+    const sources = await loadCardSources(cardsDir);
+    expect(sources.map((source) => source.stem)).toEqual(["apple", "zebra"]);
   });
 
   it("rejects an image with no matching JSON", async () => {
     const cardsDir = await makeDir();
     await writeCard(cardsDir, "orphan_image", { json: null });
 
-    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+    await expect(loadCardSources(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("image without matching JSON")],
     });
   });
@@ -109,7 +108,7 @@ describe("loadCardCatalog", () => {
     const cardsDir = await makeDir();
     await writeCard(cardsDir, "orphan_json", { imageExt: "" });
 
-    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+    await expect(loadCardSources(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("JSON without matching image")],
     });
   });
@@ -118,7 +117,7 @@ describe("loadCardCatalog", () => {
     const cardsDir = await makeDir();
     await writeCard(cardsDir, "broken", { json: "{ not valid json" });
 
-    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+    await expect(loadCardSources(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("malformed JSON")],
     });
   });
@@ -127,7 +126,7 @@ describe("loadCardCatalog", () => {
     const cardsDir = await makeDir();
     await writeCard(cardsDir, "incomplete", { json: { id: "x", type: "item" } });
 
-    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+    await expect(loadCardSources(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("invalid card definition")],
     });
   });
@@ -136,7 +135,7 @@ describe("loadCardCatalog", () => {
     const cardsDir = await makeDir();
     await writeCard(cardsDir, "wrong_type", { json: { id: 5, type: "item", body: "..." } });
 
-    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+    await expect(loadCardSources(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("invalid card definition")],
     });
   });
@@ -149,7 +148,7 @@ describe("loadCardCatalog", () => {
       imageBytes: Buffer.from("GIF89a"),
     });
 
-    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+    await expect(loadCardSources(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("unsupported image format")],
     });
   });
@@ -162,7 +161,7 @@ describe("loadCardCatalog", () => {
       imageBytes: Buffer.from("not-a-supported-image"),
     });
 
-    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+    await expect(loadCardSources(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("unsupported image format")],
     });
   });
@@ -175,7 +174,7 @@ describe("loadCardCatalog", () => {
       height: 32,
     });
 
-    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+    await expect(loadCardSources(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("non-square image dimensions")],
     });
   });
@@ -188,7 +187,7 @@ describe("loadCardCatalog", () => {
       height: size,
     });
 
-    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+    await expect(loadCardSources(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("out-of-range image dimensions")],
     });
   });
@@ -198,7 +197,7 @@ describe("loadCardCatalog", () => {
     await writeCard(cardsDir, "card_a", { json: { id: "dup", type: "item", body: "A" } });
     await writeCard(cardsDir, "card_b", { json: { id: "dup", type: "item", body: "B" } });
 
-    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+    await expect(loadCardSources(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("duplicate card id 'dup'")],
     });
   });
@@ -208,7 +207,7 @@ describe("loadCardCatalog", () => {
     await writeCard(cardsDir, "ambiguous", { json: { id: "x", type: "item", body: "..." } });
     await writeCard(cardsDir, "ambiguous", { json: null, imageExt: "jpg" });
 
-    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+    await expect(loadCardSources(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("multiple candidate images")],
     });
   });
@@ -221,7 +220,7 @@ describe("loadCardCatalog", () => {
       JSON.stringify({ id: "y", type: "item", body: "..." }),
     );
 
-    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+    await expect(loadCardSources(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("multiple candidate JSON files")],
     });
   });
@@ -230,7 +229,7 @@ describe("loadCardCatalog", () => {
     const cardsDir = await makeDir();
     await writeCard(cardsDir, "__", { json: { id: "x", type: "item", body: "..." } });
 
-    await expect(loadCardCatalog(cardsDir)).rejects.toMatchObject({
+    await expect(loadCardSources(cardsDir)).rejects.toMatchObject({
       issues: [expect.stringContaining("invalid derived card definition")],
     });
   });
@@ -242,7 +241,7 @@ describe("loadCardCatalog", () => {
 
     let error: unknown;
     try {
-      await loadCardCatalog(cardsDir);
+      await loadCardSources(cardsDir);
     } catch (err) {
       error = err;
     }

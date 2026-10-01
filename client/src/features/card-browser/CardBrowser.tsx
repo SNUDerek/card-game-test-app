@@ -1,14 +1,23 @@
 import { useMemo, useState } from "react";
+import type { CardDefinition } from "@card-table/shared";
 import { useCardCatalog } from "./CardCatalogContext";
 import "./CardBrowser.css";
 
 export const CARD_DEFINITION_MIME_TYPE = "application/x-card-definition-id";
 
+type SortKey = "position" | "name" | "type";
+
+const compareBy: Record<SortKey, (a: CardDefinition, b: CardDefinition) => number> = {
+  position: (a, b) => a.position - b.position,
+  name: (a, b) => a.name.localeCompare(b.name),
+  type: (a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name),
+};
+
 export function CardBrowser() {
   const { cards, isLoading, error } = useCardCatalog();
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState("");
-  const [sortBy, setSortBy] = useState<"name" | "id" | "type">("name");
+  const [sortBy, setSortBy] = useState<SortKey>("position");
 
   const filteredCards = useMemo(() => {
     const query = filter.trim().toLocaleLowerCase();
@@ -16,10 +25,9 @@ export function CardBrowser() {
       .filter(
         (card) =>
           card.name.toLocaleLowerCase().includes(query) ||
-          card.id.toLocaleLowerCase().includes(query) ||
           card.type.toLocaleLowerCase().includes(query),
       )
-      .sort((a, b) => a[sortBy].localeCompare(b[sortBy]));
+      .sort(compareBy[sortBy]);
   }, [cards, filter, sortBy]);
 
   return (
@@ -60,11 +68,11 @@ export function CardBrowser() {
               <select
                 id="card-browser-sort"
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as "name" | "id" | "type")}
+                onChange={(e) => setSortBy(e.target.value as SortKey)}
                 className="card-browser-sort"
               >
+                <option value="position">Set order</option>
                 <option value="name">Sort by Name</option>
-                <option value="id">Sort by ID</option>
                 <option value="type">Sort by Type</option>
               </select>
             </div>
@@ -81,7 +89,7 @@ export function CardBrowser() {
               filteredCards.map((card) => (
                 <article key={card.id} className="card-browser-item">
                   {/* Only the artwork is draggable, so the row's text stays
-                      selectable for copying ids into notes. */}
+                      selectable for copying into notes. */}
                   <img
                     src={card.imageUrl}
                     alt={`Drag ${card.name} onto the table`}
@@ -97,7 +105,6 @@ export function CardBrowser() {
                   <div className="card-info">
                     <div className="card-name">{card.name}</div>
                     <div className="card-type">{card.type}</div>
-                    <div className="card-id">{card.id}</div>
                   </div>
                 </article>
               ))}

@@ -1,5 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { CardSetSummary } from "@card-table/shared";
+import { CardSetSummarySchema, type CardSetSummary } from "@card-table/shared";
+import { z } from "zod";
+import { Link } from "wouter";
+import { apiRequest } from "../../api/client";
 import { useMultiplayer } from "../../multiplayer/MultiplayerContext";
 import { useCurrentUser } from "../auth/AuthContext";
 import "./Lobby.css";
@@ -14,17 +17,19 @@ export function Lobby() {
   const [sets, setSets] = useState<CardSetSummary[]>([]);
   const [setId, setSetId] = useState("");
   const [roomName, setRoomName] = useState("");
+  const [setsError, setSetsError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    void fetch("/api/sets").then(async (response) => {
-      if (!response.ok) throw new Error("Could not load sets.");
-      return response.json() as Promise<{ sets: CardSetSummary[] }>;
-    }).then((body) => {
+    void apiRequest("/api/sets", z.object({ sets: z.array(CardSetSummarySchema) })).then((body) => {
       if (!active) return;
       setSets(body.sets);
       setSetId((current) => current || body.sets[0]?.id || "");
-    }).catch(() => undefined);
+      setSetsError(null);
+    }).catch((cause: unknown) => {
+      if (!active) return;
+      setSetsError(cause instanceof Error ? cause.message : "Could not load sets.");
+    });
     return () => { active = false; };
   }, []);
 
@@ -51,6 +56,7 @@ export function Lobby() {
       <form className="lobby-card" onSubmit={onSubmit}>
         <h1>Card Table</h1>
         <p className="lobby-account">Signed in as {user?.displayName}</p>
+        <p><Link href="/sets">Manage card sets</Link></p>
 
         <div className="lobby-modes" role="group" aria-label="Room action">
           <button
@@ -104,6 +110,7 @@ export function Lobby() {
             {connectionError}
           </p>
         )}
+        {setsError && <p className="lobby-error" role="alert">{setsError}</p>}
       </form>
     </main>
   );
