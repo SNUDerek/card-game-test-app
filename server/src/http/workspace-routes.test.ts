@@ -5,24 +5,31 @@ import type { Server } from "node:http";
 import express from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openDatabase, type WorkspaceDatabase } from "../db/connection.js";
+import { ImageRepository } from "../db/images.js";
+import { pngBytes } from "../db/test-fixtures.js";
 import { ImageStore } from "../library/image-store.js";
-import { WorkspaceRepository } from "../library/workspace-repository.js";
+import { WorkspaceService } from "../library/workspace-service.js";
+import { SetUsageRegistry } from "../library/set-usage.js";
 import { registerRoomRoutes, type RoomGateway } from "./room-routes.js";
-import { registerWorkspaceRoutes, workspaceErrorHandler } from "./workspace-routes.js";
+import { registerWorkspaceRoutes } from "./workspace-routes.js";
+import { workspaceErrorHandler } from "./errors.js";
 
 let db: WorkspaceDatabase;
 let server: Server;
 let baseUrl: string;
 let dataDirectory: string;
 let gateway: RoomGateway;
+let repository: WorkspaceService;
+let usage: SetUsageRegistry;
 
 beforeEach(async () => {
   db = openDatabase(":memory:");
   db.prepare(`INSERT INTO users (id, username, display_name, password_hash, password_salt, created_at)
     VALUES ('user-1', 'alice', 'Alice', 'hash', 'salt', ?)`).run(Date.now());
   dataDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "card-table-routes-"));
-  const repository = new WorkspaceRepository(db);
-  const images = new ImageStore(db, dataDirectory);
+  const images = new ImageStore(new ImageRepository(db), path.join(dataDirectory, "images"));
+  usage = new SetUsageRegistry();
+  repository = new WorkspaceService(db, images, usage);
   gateway = {
     create: vi.fn(async () => ({ roomId: "room-1", sessionId: "seat-1" }) as never),
     list: vi.fn(async () => [{ roomId: "room-1", clients: 2, maxClients: 16,
@@ -105,6 +112,34 @@ describe("workspace HTTP routes", () => {
     });
     expect(updated.body.card).toMatchObject({ name: "Big Goblin", revision: 2 });
     expect((await json(`/api/cards/${card.id}`, "DELETE")).response.status).toBe(204);
+  });
+
+  it("rejects invalid uploads, cross-set decks, and archiving in-use content", async () => {
+    const mismatch = await fetch(`${baseUrl}/api/images`, {
+      method: "POST", headers: { "Content-Type": "image/jpeg" }, body: pngBytes(64),
+    });
+    expect(mismatch.status).toBe(400);
+    const nonSquare = await fetch(`${baseUrl}/api/images`, {
+      method: "POST", headers: { "Content-Type": "image/png" }, body: pngBytes(64, 32),
+    });
+    expect(nonSquare.status).toBe(400);
+
+    const first = await createSet();
+    const second = await createSet();
+    const image = await uploadImage();
+    const card = (await json(`/api/sets/${first.id}/cards`, "POST", {
+      name: "Goblin", type: "creature", body: "Sneaky", imageId: image.id,
+    })).body.card;
+    expect((await json(`/api/sets/${second.id}/decks`, "POST", {
+      name: "Wrong set", entries: [{ cardId: card.id, copies: 1 }],
+    })).response.status).toBe(400);
+
+    await json(`/api/sets/${first.id}/decks`, "POST", {
+      name: "Army", entries: [{ cardId: card.id, copies: 1 }],
+    });
+    expect((await json(`/api/cards/${card.id}`, "DELETE")).response.status).toBe(409);
+    usage.acquire(first.id, "room-active");
+    expect((await json(`/api/sets/${first.id}`, "DELETE")).response.status).toBe(409);
   });
 
   it("supports deck CRUD, generation, duplication, forking, and ZIP export", async () => {

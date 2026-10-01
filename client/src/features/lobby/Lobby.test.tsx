@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConnectionStatus } from "../../multiplayer/MultiplayerContext";
 import { Lobby } from "./Lobby";
@@ -26,6 +26,11 @@ beforeEach(() => {
   multiplayer.status = "disconnected";
   multiplayer.invitedRoomId = null;
   multiplayer.connectionError = null;
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    sets: [{ id: "set-1", name: "Skirmish", description: "", forkedFromSetId: null,
+      forkedFromSetName: null, revision: 1, archived: false, cardCount: 0, deckCount: 0,
+      createdAt: 1, updatedAt: 1 }],
+  }), { status: 200, headers: { "Content-Type": "application/json" } })));
 });
 
 function typeInto(label: string | RegExp, value: string) {
@@ -33,12 +38,14 @@ function typeInto(label: string | RegExp, value: string) {
 }
 
 describe("Lobby", () => {
-  it("creates a room as the signed-in account", () => {
+  it("creates a set-scoped room through the HTTP-backed flow", async () => {
     render(<Lobby />);
+    await waitFor(() => expect(screen.getByLabelText("Card set")).toHaveValue("set-1"));
+    typeInto("Room name", "Playtest");
 
     fireEvent.click(screen.getByRole("button", { name: "Create room" }));
 
-    expect(createRoom).toHaveBeenCalledWith();
+    expect(createRoom).toHaveBeenCalledWith({ setId: "set-1", name: "Playtest" });
     expect(joinRoom).not.toHaveBeenCalled();
   });
 
@@ -52,9 +59,12 @@ describe("Lobby", () => {
     expect(joinRoom).toHaveBeenCalledWith({ roomId: "KM7XPQ3D" });
   });
 
-  it("requires a room code when joining", () => {
+  it("requires room details when creating and a room code when joining", async () => {
     render(<Lobby />);
     const submit = () => screen.getByRole("button", { name: /^(Create|Join) room$/ });
+    expect(submit()).toBeDisabled();
+    await waitFor(() => expect(screen.getByLabelText("Card set")).toHaveValue("set-1"));
+    typeInto("Room name", "Playtest");
     expect(submit()).toBeEnabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Join" }));

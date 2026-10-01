@@ -1,16 +1,19 @@
-import fs from "node:fs";
-import type { Application, NextFunction, Request, RequestHandler, Response } from "express";
+import type { Application, Request, RequestHandler, Response } from "express";
 import express from "express";
 import {
-  CreateCardSchema, CreateDeckSchema, CreateSetSchema, DuplicateDeckSchema, ForkSetSchema,
-  GenerateDeckRequestSchema, UpdateCardSchema, UpdateDeckSchema, UpdateSetSchema,
+  CreateCardRequestSchema, CreateCardSetRequestSchema, DuplicateDeckRequestSchema,
+  ForkCardSetRequestSchema, GenerateDeckRequestSchema, SaveDeckRequestSchema,
+  UpdateCardRequestSchema, UpdateCardSetRequestSchema, UpdateDeckRequestSchema,
 } from "@card-table/shared";
 import { z } from "zod";
 import type { AuthenticatedRequest } from "../auth/middleware.js";
 import { buildSetExportArchive, setExportFileName } from "../library/export-set.js";
 import { DeckGenerationError, generateDeck } from "../library/generate-deck.js";
 import type { ImageStore } from "../library/image-store.js";
-import { WorkspaceError, type WorkspaceRepository } from "../library/workspace-repository.js";
+import type { LibraryCard } from "@card-table/shared";
+import type { WorkspaceService } from "../library/workspace-service.js";
+import { inspectCardImage } from "../library/image-store.js";
+import { HttpError } from "./errors.js";
 
 const IdParams = z.object({ id: z.string().uuid() });
 const ImageParams = z.object({ id: z.string().regex(/^[a-f0-9]{64}$/) });
@@ -22,7 +25,7 @@ function asyncRoute(handler: (req: Request, res: Response) => void | Promise<voi
 
 function parse<Schema extends z.ZodType>(schema: Schema, value: unknown): z.infer<Schema> {
   const parsed = schema.safeParse(value);
-  if (!parsed.success) throw new WorkspaceError(400, "Invalid request.");
+  if (!parsed.success) throw new HttpError(400, "Invalid request.");
   return parsed.data;
 }
 
@@ -30,9 +33,11 @@ function userId(req: Request): string {
   return (req as AuthenticatedRequest).user.id;
 }
 
+const cardResponse = (card: LibraryCard) => ({ ...card, imageUrl: `/images/${card.imageId}` });
+
 export function registerWorkspaceRoutes(
   app: Application,
-  repository: WorkspaceRepository,
+  repository: WorkspaceService,
   images: ImageStore,
 ): void {
   const json = express.json({ type: "application/json", limit: "64kb" });
@@ -41,13 +46,15 @@ export function registerWorkspaceRoutes(
     res.json({ sets: repository.listSets(req.query.archived === "true") });
   });
   app.post("/api/sets", json, (req, res) => {
-    res.status(201).json({ set: repository.createSet(parse(CreateSetSchema, req.body), userId(req)) });
+    res.status(201).json({ set: repository.createSet(parse(CreateCardSetRequestSchema, req.body), userId(req)) });
   });
   app.get("/api/sets/:id", (req, res) => {
-    res.json({ set: repository.getSet(parse(IdParams, req.params).id, req.query.archived === "true") });
+    const set = repository.sets.require(parse(IdParams, req.params).id);
+    if (set.archived && req.query.archived !== "true") throw new HttpError(404, "Set not found.");
+    res.json({ set });
   });
   app.patch("/api/sets/:id", json, (req, res) => {
-    res.json({ set: repository.updateSet(parse(IdParams, req.params).id, parse(UpdateSetSchema, req.body)) });
+    res.json({ set: repository.updateSet(parse(IdParams, req.params).id, parse(UpdateCardSetRequestSchema, req.body), userId(req)) });
   });
   app.delete("/api/sets/:id", (req, res) => {
     repository.archiveSet(parse(IdParams, req.params).id);
@@ -55,22 +62,23 @@ export function registerWorkspaceRoutes(
   });
   app.post("/api/sets/:id/fork", json, (req, res) => {
     const { id } = parse(IdParams, req.params);
-    const { name } = parse(ForkSetSchema, req.body);
-    res.status(201).json({ set: repository.forkSet(id, name, userId(req)) });
+    const { name } = parse(ForkCardSetRequestSchema, req.body);
+    const set = repository.forkSet(id, name, userId(req));
+    res.status(201).json({ set: repository.setSummary(set.id) });
   });
 
   app.get("/api/sets/:setId/cards", (req, res) => {
-    res.json({ cards: repository.listCards(parse(SetParams, req.params).setId, req.query.archived === "true") });
+    res.json({ cards: repository.listCards(parse(SetParams, req.params).setId, req.query.archived === "true").map(cardResponse) });
   });
   app.post("/api/sets/:setId/cards", json, (req, res) => {
     const { setId } = parse(SetParams, req.params);
-    res.status(201).json({ card: repository.createCard(setId, parse(CreateCardSchema, req.body), userId(req)) });
+    res.status(201).json({ card: cardResponse(repository.createCard(setId, parse(CreateCardRequestSchema, req.body), userId(req))) });
   });
   app.put("/api/cards/:id", json, (req, res) => {
-    res.json({ card: repository.updateCard(parse(IdParams, req.params).id, parse(UpdateCardSchema, req.body), userId(req)) });
+    res.json({ card: cardResponse(repository.updateCard(parse(IdParams, req.params).id, parse(UpdateCardRequestSchema, req.body), userId(req))) });
   });
   app.delete("/api/cards/:id", (req, res) => {
-    repository.archiveCard(parse(IdParams, req.params).id);
+    repository.archiveCard(parse(IdParams, req.params).id, userId(req));
     res.status(204).end();
   });
 
@@ -82,17 +90,17 @@ export function registerWorkspaceRoutes(
   });
   app.post("/api/sets/:setId/decks", json, (req, res) => {
     const { setId } = parse(SetParams, req.params);
-    res.status(201).json({ deck: repository.createDeck(setId, parse(CreateDeckSchema, req.body), userId(req)) });
+    res.status(201).json({ deck: repository.createDeck(setId, parse(SaveDeckRequestSchema, req.body), userId(req)) });
   });
   app.put("/api/decks/:id", json, (req, res) => {
-    res.json({ deck: repository.updateDeck(parse(IdParams, req.params).id, parse(UpdateDeckSchema, req.body), userId(req)) });
+    res.json({ deck: repository.updateDeck(parse(IdParams, req.params).id, parse(UpdateDeckRequestSchema, req.body), userId(req)) });
   });
   app.delete("/api/decks/:id", (req, res) => {
     repository.deleteDeck(parse(IdParams, req.params).id);
     res.status(204).end();
   });
   app.post("/api/decks/:id/duplicate", json, (req, res) => {
-    const { name } = parse(DuplicateDeckSchema, req.body ?? {});
+    const { name } = parse(DuplicateDeckRequestSchema, req.body ?? {});
     res.status(201).json({ deck: repository.duplicateDeck(parse(IdParams, req.params).id, name, userId(req)) });
   });
   app.post("/api/sets/:setId/decks/generate", json, (req, res) => {
@@ -100,42 +108,36 @@ export function registerWorkspaceRoutes(
     const { params } = parse(GenerateDeckRequestSchema, req.body);
     try { res.json(generateDeck(cards, params)); }
     catch (error) {
-      if (error instanceof DeckGenerationError) throw new WorkspaceError(400, error.message);
+      if (error instanceof DeckGenerationError) throw new HttpError(400, error.message);
       throw error;
     }
   });
 
   app.get("/api/images", (_req, res) => res.json({ images: images.list() }));
   app.post("/api/images", express.raw({ type: ["image/png", "image/jpeg"], limit: "2mb" }), (req, res) => {
-    if (!Buffer.isBuffer(req.body)) throw new WorkspaceError(415, "An image Content-Type is required.");
-    res.status(201).json({ image: images.upload(req.body, req.headers["content-type"] ?? "", userId(req)) });
+    if (!Buffer.isBuffer(req.body)) throw new HttpError(415, "An image Content-Type is required.");
+    const inspected = inspectCardImage(req.body);
+    const declared = req.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase();
+    if (declared !== inspected.mime) throw new HttpError(400, "Image bytes do not match the Content-Type.");
+    const image = images.save(req.body, userId(req));
+    res.status(201).json({ image: { ...image, imageUrl: `/images/${image.id}` } });
   });
   app.get("/images/:id", (req, res) => {
-    const image = images.get(parse(ImageParams, req.params).id);
+    const image = images.find(parse(ImageParams, req.params).id);
+    if (!image) throw new HttpError(404, "Image not found.");
     res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
-    res.type(image.mime).sendFile(images.filePath(image));
+    res.type(image.mime).sendFile(images.filePath(image.id, image.mime));
   });
 
   app.get("/api/sets/:id/export", asyncRoute(async (req, res) => {
     const snapshot = repository.exportSnapshot(parse(IdParams, req.params).id);
     const exportedAt = new Date();
     const archive = buildSetExportArchive(snapshot, (imageId) => {
-      const image = images.get(imageId);
-      return fs.readFileSync(images.filePath(image));
+      return images.read(imageId);
     }, exportedAt);
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", `attachment; filename="${setExportFileName(snapshot.set.name, exportedAt)}"`);
     res.send(Buffer.from(archive));
   }));
 
-}
-
-export function workspaceErrorHandler(
-  error: unknown,
-  _req: Request,
-  res: Response,
-  next: NextFunction,
-): void {
-  if (!(error instanceof WorkspaceError)) { next(error); return; }
-  res.status(error.status).json({ error: error.message });
 }

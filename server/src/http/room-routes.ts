@@ -1,11 +1,12 @@
 import type { Application, Request } from "express";
 import express from "express";
 import { matchMaker, type AuthContext } from "colyseus";
-import { CreateRoomSchema } from "@card-table/shared";
+import { CreateRoomRequestSchema } from "@card-table/shared";
 import type { AuthenticatedRequest } from "../auth/middleware.js";
-import type { WorkspaceRepository } from "../library/workspace-repository.js";
-import { WorkspaceError } from "../library/workspace-repository.js";
+import type { WorkspaceService } from "../library/workspace-service.js";
+import { HttpError } from "./errors.js";
 import type { TableRoom } from "../rooms/TableRoom.js";
+import type { RoomCreationRegistry } from "../rooms/room-creation.js";
 
 export interface RoomListing {
   roomId: string;
@@ -24,10 +25,12 @@ export const colyseusRoomGateway: RoomGateway = {
   create: (options, auth) => matchMaker.create("table", options, auth),
   list: async () => (await matchMaker.query({ name: "table" })) as RoomListing[],
   end: async (roomId, editorName) => {
+    const [room] = await matchMaker.query({ roomId });
+    if (!room) throw new HttpError(404, "Room not found.");
     try {
       await matchMaker.remoteRoomCall<TableRoom, "endRoom">(roomId, "endRoom", [editorName]);
     } catch {
-      throw new WorkspaceError(404, "Room not found.");
+      throw new HttpError(404, "Room not found.");
     }
   },
 };
@@ -42,8 +45,9 @@ function authContext(req: Request): AuthContext {
 
 export function registerRoomRoutes(
   app: Application,
-  repository: WorkspaceRepository,
+  repository: WorkspaceService,
   gateway: RoomGateway = colyseusRoomGateway,
+  creationRegistry?: RoomCreationRegistry,
 ): void {
   const json = express.json({ type: "application/json", limit: "16kb" });
 
@@ -61,22 +65,29 @@ export function registerRoomRoutes(
 
   app.post("/api/rooms", json, async (req, res, next) => {
     try {
-      const parsed = CreateRoomSchema.safeParse(req.body);
-      if (!parsed.success) throw new WorkspaceError(400, "Invalid room details.");
-      const set = repository.getSet(parsed.data.setId);
-      const cardDefinitionIds = repository.listCards(set.id).map((card) => card.id);
-      const reservation = await gateway.create({
-        ...parsed.data,
-        setName: set.name,
-        cardDefinitionIds,
-      }, authContext(req));
+      const parsed = CreateRoomRequestSchema.safeParse(req.body);
+      if (!parsed.success) throw new HttpError(400, "Invalid room details.");
+      const set = repository.sets.require(parsed.data.setId);
+      if (set.archived) throw new HttpError(404, "Set not found.");
+      const creationToken = creationRegistry?.issue(set.id);
+      let reservation;
+      try {
+        reservation = await gateway.create({
+          ...parsed.data,
+          setName: set.name,
+          creationToken,
+        }, authContext(req));
+      } catch (error) {
+        if (creationToken) creationRegistry?.revoke(creationToken);
+        throw error;
+      }
       res.status(201).json(reservation);
     } catch (error) { next(error); }
   });
 
   app.post("/api/rooms/:id/end", async (req, res, next) => {
     try {
-      if (!req.params.id) throw new WorkspaceError(400, "Room ID is required.");
+      if (!req.params.id) throw new HttpError(400, "Room ID is required.");
       await gateway.end(req.params.id, (req as unknown as AuthenticatedRequest).user.displayName);
       res.status(204).end();
     } catch (error) { next(error); }

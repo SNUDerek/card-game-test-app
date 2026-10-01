@@ -44,6 +44,7 @@ export const UpdateCardSetRequestSchema = z.object({
   name: z.string().trim().min(1).max(SET_NAME_MAX_LENGTH).optional(),
   description: z.string().trim().max(DESCRIPTION_MAX_LENGTH).optional(),
   revision: RevisionSchema,
+  archived: z.boolean().optional(),
 });
 
 export type UpdateCardSetRequest = z.infer<typeof UpdateCardSetRequestSchema>;
@@ -128,3 +129,22 @@ export interface DeckSummary {
 export interface DeckWithEntries extends DeckSummary {
   entries: { cardId: string; copies: number }[];
 }
+
+export const DuplicateDeckRequestSchema = z.object({
+  name: z.string().trim().min(1).max(DECK_NAME_MAX_LENGTH).optional(),
+});
+
+export const GenerateDeckRequestSchema = z.object({
+  params: z.object({
+    size: z.number().int().min(1).max(MAX_DECK_SIZE),
+    maxCopies: z.number().int().min(1).max(99),
+    includeTypes: z.array(z.string().min(1)).min(1).optional(),
+    seed: z.string().min(1).max(64).optional(),
+  }),
+});
+
+export const CreateRoomRequestSchema = z.object({
+  setId: z.string().uuid(),
+  name: z.string().trim().min(1).max(100),
+  description: z.string().trim().max(DESCRIPTION_MAX_LENGTH).default(""),
+});
