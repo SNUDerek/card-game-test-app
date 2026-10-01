@@ -40,7 +40,6 @@ import { flipCard } from "../commands/card/flip-card.js";
 import { setCardOrientation } from "../commands/card/tap-card.js";
 import { bringToFront, raiseToFront } from "../commands/card/bring-to-front.js";
 import { deleteCard } from "../commands/card/delete-card.js";
-import { assignHostIfVacant, migrateHostIfNeeded } from "./host.js";
 import { stackCard } from "../commands/stack/stack-card.js";
 import { moveStack } from "../commands/stack/move-stack.js";
 import { drawTopCard } from "../commands/stack/draw-top-card.js";
@@ -65,7 +64,7 @@ export interface TableRoomOptions {
   /** Hard cap on joined and reconnecting players in this room. */
   maxClients?: number;
   /** Resolves the session cookie to an account. Supplied by the server bootstrap. */
-  authenticate?: (cookieHeader: string | null, joinOptions: unknown) => CurrentUser | undefined;
+  authenticate?: (cookieHeader: string | null) => CurrentUser | undefined;
   /** How long a dropped player keeps their identity. 0 disables reconnection. */
   reconnectionGraceSeconds?: number;
   /** Per-connection command budget. Defaults to DEFAULT_COMMAND_RATE_LIMIT. */
@@ -104,7 +103,7 @@ export class TableRoom extends Room<{ state: RoomState }> {
   private readonly playerIdBySessionId = new Map<string, PlayerId>();
   private cardDefinitionIds: CardDefinitionLookup = new Set<string>();
   private lockTimeoutMs = DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
-  private authenticate: (cookieHeader: string | null, joinOptions: unknown) => CurrentUser | undefined = () => undefined;
+  private authenticate: (cookieHeader: string | null) => CurrentUser | undefined = () => undefined;
   private reconnectionGraceSeconds = DEFAULT_RECONNECTION_GRACE_SECONDS;
   private joinCount = 0;
   private rateLimiter = new CommandRateLimiter();
@@ -334,8 +333,8 @@ export class TableRoom extends Room<{ state: RoomState }> {
     this.libraryBinding?.dispose(this.onLibraryChanged);
   }
 
-  onAuth(_client: Client, options: unknown, context: AuthContext): CurrentUser {
-    const user = this.authenticate(context.headers.get("cookie"), options);
+  onAuth(_client: Client, _options: unknown, context: AuthContext): CurrentUser {
+    const user = this.authenticate(context.headers.get("cookie"));
     if (!user) throw new ServerError(401, "Authentication required.");
     return user;
   }
@@ -352,7 +351,6 @@ export class TableRoom extends Room<{ state: RoomState }> {
 
     this.playerIdBySessionId.set(client.sessionId, playerId);
     this.state.players.set(playerId, player);
-    assignHostIfVacant(this.state, playerId);
     console.log(`${playerId} joined ${this.roomId}`);
   }
 
@@ -382,8 +380,6 @@ export class TableRoom extends Room<{ state: RoomState }> {
       this.playerIdBySessionId.set(reconnected.sessionId, playerId);
       const restored = this.state.players.get(playerId);
       if (restored) restored.connected = true;
-      // The room may have been left hostless while this player was away.
-      assignHostIfVacant(this.state, playerId);
       console.log(`${playerId} reconnected to ${this.roomId}`);
     } catch {
       this.removePlayer(playerId);
@@ -394,7 +390,6 @@ export class TableRoom extends Room<{ state: RoomState }> {
   private removePlayer(playerId: PlayerId): void {
     releasePlayerLocks(this.state, playerId);
     this.state.players.delete(playerId);
-    migrateHostIfNeeded(this.state, playerId);
     console.log(`${playerId} left ${this.roomId}`);
   }
 

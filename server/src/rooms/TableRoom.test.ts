@@ -15,10 +15,7 @@ describe("TableRoom connection lifecycle", () => {
           setId: "set-1",
           cardLibrary: fixedCardLibrary(["spell-1"]),
           lockTimeoutMs: 75,
-          authenticate: (_cookie, options) => {
-            const displayName = String((options as { displayName?: string })?.displayName ?? "").trim();
-            return displayName ? { id: `user-${displayName}`, username: displayName, displayName } : undefined;
-          },
+          authenticate: () => ({ id: "user-alice", username: "alice", displayName: "Alice" }),
         }),
       },
     });
@@ -32,10 +29,10 @@ describe("TableRoom connection lifecycle", () => {
     await colyseus.cleanup();
   });
 
-  it("synchronizes distinct player identities to two clients and removes leavers", async () => {
+  it("synchronizes separate seats for multiple tabs of one account and removes leavers", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "  Alice  " });
-    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    const bob = await colyseus.connectTo(room);
     await room.waitForNextPatch();
 
     expect(room.state.cards.size).toBe(0);
@@ -44,7 +41,8 @@ describe("TableRoom connection lifecycle", () => {
     expect(bob.state.toJSON()).toEqual(room.state.toJSON());
 
     const players = [...room.state.players.values()];
-    expect(players.map((player) => player.displayName).sort()).toEqual(["Alice", "Bob"]);
+    expect(players.map((player) => player.displayName)).toEqual(["Alice", "Alice"]);
+    expect(players.every((player) => player.userId === "user-alice")).toBe(true);
     expect(players.every((player) => player.connected)).toBe(true);
     expect(players.every((player) => player.id !== alice.sessionId && player.id !== bob.sessionId)).toBe(
       true,
@@ -60,23 +58,17 @@ describe("TableRoom connection lifecycle", () => {
 
   it("caps joined players so room state cannot grow without bound", async () => {
     const room = await colyseus.createRoom<TableRoom>("table", { maxClients: 2 });
-    await colyseus.connectTo(room, { displayName: "Alice" });
-    await colyseus.connectTo(room, { displayName: "Bob" });
+    await colyseus.connectTo(room);
+    await colyseus.connectTo(room);
 
-    await expect(colyseus.connectTo(room, { displayName: "Mallory" })).rejects.toThrow();
+    await expect(colyseus.connectTo(room)).rejects.toThrow();
     expect(room.state.players.size).toBe(2);
-  });
-
-  it("rejects an unauthenticated connection", async () => {
-    await expect(colyseus.sdk.joinOrCreate("table", {})).rejects.toThrow(
-      "Authentication required.",
-    );
   });
 
   it("validates and synchronizes spawned cards", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    const bob = await colyseus.connectTo(room);
 
     const result = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
       definitionId: "spell-1",
@@ -99,7 +91,7 @@ describe("TableRoom connection lifecycle", () => {
 
   it("rejects malformed and unknown spawn requests without mutation", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
 
     await expect(
       alice.request(TABLE_COMMANDS.SPAWN_CARD, {
@@ -120,7 +112,7 @@ describe("TableRoom connection lifecycle", () => {
 
   it("deals a deck as one synchronized stack and rejects bad decks whole", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
     const deal = { source: "entries", x: 50, y: 60, shuffle: true, face: "back" };
 
     await expect(
@@ -153,8 +145,8 @@ describe("TableRoom connection lifecycle", () => {
 
   it("synchronizes claim, rejection, idempotent refresh, and release", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    const bob = await colyseus.connectTo(room);
     const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
       definitionId: "spell-1",
       x: 0,
@@ -181,7 +173,7 @@ describe("TableRoom connection lifecycle", () => {
 
   it("releases locks after timeout and when the owner disconnects", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
     const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
       definitionId: "spell-1",
       x: 0,
@@ -202,8 +194,8 @@ describe("TableRoom connection lifecycle", () => {
 
   it("only lets the lock owner move a standalone card", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    const bob = await colyseus.connectTo(room);
     const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
       definitionId: "spell-1",
       x: 0,
@@ -230,8 +222,8 @@ describe("TableRoom connection lifecycle", () => {
 
   it("synchronizes flip, tap, and untap across clients", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    const bob = await colyseus.connectTo(room);
     const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
       definitionId: "spell-1",
       x: 0,
@@ -257,7 +249,7 @@ describe("TableRoom connection lifecycle", () => {
 
   it("rejects invalid card-state command payloads without mutation", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
 
     await expect(alice.request(TABLE_COMMANDS.FLIP_CARD, {})).rejects.toThrow(
       "Invalid FLIP_CARD payload",
@@ -270,8 +262,8 @@ describe("TableRoom connection lifecycle", () => {
 
   it("synchronizes explicit and drag-driven bring-to-front ordering", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    const bob = await colyseus.connectTo(room);
     const first = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
       definitionId: "spell-1",
       x: 100,
@@ -303,7 +295,7 @@ describe("TableRoom connection lifecycle", () => {
 
   it("rejects invalid bring-to-front requests without changing ordering", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
 
     await expect(alice.request(TABLE_COMMANDS.BRING_TO_FRONT, {})).rejects.toThrow(
       "Invalid BRING_TO_FRONT payload",
@@ -316,8 +308,8 @@ describe("TableRoom connection lifecycle", () => {
 
   it("deletes a standalone card for all connected clients", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    const bob = await colyseus.connectTo(room);
     const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
       definitionId: "spell-1",
       x: 0,
@@ -336,8 +328,8 @@ describe("TableRoom connection lifecycle", () => {
 
   it("refuses to delete a card another player is holding", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    const bob = await colyseus.connectTo(room);
     const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
       definitionId: "spell-1",
       x: 0,
@@ -361,7 +353,7 @@ describe("TableRoom connection lifecycle", () => {
 
   it("rejects invalid and unknown delete requests without mutation", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
 
     await expect(alice.request(TABLE_COMMANDS.DELETE_CARD, {})).rejects.toThrow(
       "Invalid DELETE_CARD payload",
@@ -374,8 +366,8 @@ describe("TableRoom connection lifecycle", () => {
 
   it("creates and synchronizes a stack from two matching standalone cards", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    const bob = await colyseus.connectTo(room);
     const source = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
       definitionId: "spell-1", x: 10, y: 20,
     });
@@ -401,7 +393,7 @@ describe("TableRoom connection lifecycle", () => {
 
   it("moves, draws, manipulates, and deletes stacks authoritatively", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
     const spawned = [];
     for (let index = 0; index < 3; index += 1) {
       spawned.push(await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
@@ -440,7 +432,7 @@ describe("TableRoom connection lifecycle", () => {
 
   it("rejects malformed coordinates over the wire without corrupting the room", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
     const spawned = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
       definitionId: "spell-1", x: 10, y: 20,
     });
@@ -467,7 +459,7 @@ describe("TableRoom connection lifecycle", () => {
     const room = await colyseus.createRoom<TableRoom>("table", {
       commandRateLimit: { burst: 5, perSecond: 1 },
     });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
 
     const outcomes = await Promise.allSettled(
       Array.from({ length: 40 }, () =>
@@ -494,8 +486,8 @@ describe("TableRoom connection lifecycle", () => {
   describe("commands sent without awaiting a reply", () => {
     it("survives a hover naming a card that was just deleted", async () => {
       const room = await colyseus.createRoom<TableRoom>("table");
-      const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-      const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+      const alice = await colyseus.connectTo(room);
+      const bob = await colyseus.connectTo(room);
 
       const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
         definitionId: "spell-1",
@@ -524,8 +516,8 @@ describe("TableRoom connection lifecycle", () => {
 
     it("survives a rejected move of a card another player holds", async () => {
       const room = await colyseus.createRoom<TableRoom>("table");
-      const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-      const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+      const alice = await colyseus.connectTo(room);
+      const bob = await colyseus.connectTo(room);
 
       const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
         definitionId: "spell-1",
@@ -552,8 +544,8 @@ describe("TableRoom connection lifecycle", () => {
 
     it("still rejects to a client that does await a reply", async () => {
       const room = await colyseus.createRoom<TableRoom>("table");
-      const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-      const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+      const alice = await colyseus.connectTo(room);
+      const bob = await colyseus.connectTo(room);
 
       const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
         definitionId: "spell-1",

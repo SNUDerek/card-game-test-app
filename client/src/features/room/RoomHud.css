@@ -98,11 +98,6 @@
   color: #cbd5e1;
 }
 
-.room-hud-tag.is-host {
-  background: #b45309;
-  color: #fff7ed;
-}
-
 .room-hud-action:disabled {
   cursor: progress;
   opacity: 0.6;

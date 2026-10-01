@@ -3,7 +3,7 @@
 # Data Model and Multiplayer API Specification
 
 > Target specification for the shared-workspace iteration; new account/library features
-> are planned, not necessarily implemented. See [Persistent Workspace Plan](persistent-workspace.md)
+> are planned, not necessarily implemented. See the archived [Persistent Workspace Plan](archive/persistent-workspace.md)
 > for the SQL schema and delivery phases and [Project Specification](project-spec.md) for UX.
 
 ## 1. Purpose

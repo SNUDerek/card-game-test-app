@@ -36,10 +36,6 @@ describe("room routes", () => {
 describe("describeConnectionError", () => {
   it.each([
     [new Error('room "ABC123" not found'), "That room no longer exists."],
-    [
-      new Error("A display name between 1 and 50 characters is required."),
-      "A display name between 1 and 50 characters is required.",
-    ],
     [new Error("socket hang up"), "Could not reach the tabletop server."],
   ])("explains %s to the player", (cause, expected) => {
     expect(describeConnectionError(cause)).toBe(expected);

@@ -44,10 +44,7 @@ describe("TableRoom bound to a library set", () => {
           deckLookup: { getDeck: (id: string) => new DeckRepository(db).require(id) },
           displayNameFor: (id: string) => (id === userId ? "Alice" : undefined),
           reconnectionGraceSeconds: 0,
-          authenticate: (_cookie, options) => {
-            const displayName = String((options as { displayName?: string })?.displayName ?? "").trim();
-            return displayName ? { id: `user-${displayName}`, username: displayName, displayName } : undefined;
-          },
+          authenticate: () => ({ id: userId, username: "alice", displayName: "Alice" }),
         }),
       },
     });
@@ -71,7 +68,7 @@ describe("TableRoom bound to a library set", () => {
     const room = await colyseus.createRoom<TableRoom>("table", { setId: set.id });
     expect(usage.roomsUsing(set.id)).toEqual([room.roomId]);
 
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
     await alice.leave();
 
     await until(() => !usage.isInUse(set.id));
@@ -80,7 +77,7 @@ describe("TableRoom bound to a library set", () => {
   it("synchronizes its set id to clients", async () => {
     const set = createSet("Synced");
     const room = await colyseus.createRoom<TableRoom>("table", { setId: set.id });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
     await room.waitForNextPatch();
 
     expect(alice.state.setId).toBe(set.id);
@@ -92,7 +89,7 @@ describe("TableRoom bound to a library set", () => {
     const mine = library.createCard(set.id, cardContent(imageId), userId);
     const theirs = library.createCard(other.id, cardContent(imageId), userId);
     const room = await colyseus.createRoom<TableRoom>("table", { setId: set.id });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
 
     await expect(
       alice.request(TABLE_COMMANDS.SPAWN_CARD, { definitionId: mine.id, x: 0, y: 0 }),
@@ -119,7 +116,7 @@ describe("TableRoom bound to a library set", () => {
     const other = createSet("Elsewhere");
     const card = library.createCard(set.id, cardContent(imageId), userId);
     const room = await colyseus.createRoom<TableRoom>("table", { setId: set.id });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
 
     const received: CatalogChangedEvent[] = [];
     alice.onMessage(ROOM_EVENTS.CATALOG_CHANGED, (event: CatalogChangedEvent) => received.push(event));
@@ -143,7 +140,7 @@ describe("TableRoom bound to a library set", () => {
     const deck = decks.create(set.id, { name: "Starter", description: "", entries: [{ cardId: card.id, copies: 2 }] }, userId);
     const foreign = decks.create(other.id, { name: "Foreign", description: "", entries: [{ cardId: foreignCard.id, copies: 2 }] }, userId);
     const room = await colyseus.createRoom<TableRoom>("table", { setId: set.id });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
 
     await expect(alice.request(TABLE_COMMANDS.SPAWN_DECK, {
       source: "deck", deckId: deck.id, x: 5, y: 10, shuffle: false, face: "back",
@@ -156,7 +153,7 @@ describe("TableRoom bound to a library set", () => {
   it("updates shared room metadata through its semantic command", async () => {
     const set = createSet("Metadata");
     const room = await colyseus.createRoom<TableRoom>("table", { setId: set.id, name: "Before" });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
 
     await expect(alice.request("UPDATE_ROOM_METADATA", { name: "After", description: "Updated" }))
       .resolves.toEqual({ updated: true });
@@ -177,7 +174,7 @@ describe("TableRoom bound to a library set", () => {
   it("expires an idle room and releases its set usage lock", async () => {
     const set = createSet("Expiring");
     const room = await colyseus.createRoom<TableRoom>("table", { setId: set.id, idleTimeoutMs: 1_000 });
-    await colyseus.connectTo(room, { displayName: "Alice" });
+    await colyseus.connectTo(room);
 
     await until(() => !usage.isInUse(set.id), 3_000);
   });
@@ -188,7 +185,7 @@ describe("TableRoom bound to a library set", () => {
     const room = await colyseus.createRoom<TableRoom>("table", { setId: set.id });
     expect(library.listenerCount("changed")).toBe(before + 1);
 
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
     await alice.leave();
 
     await until(() => library.listenerCount("changed") === before);

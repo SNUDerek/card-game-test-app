@@ -20,14 +20,19 @@ describe("TableRoom sessions", () => {
 
   beforeAll(async () => {
     colyseus = await boot({
-      rooms: { table: defineRoom(TableRoom, {
-        setId: "set-1",
-        cardLibrary: fixedCardLibrary(["spell-1"]),
-        authenticate: (_cookie, options) => {
-          const displayName = String((options as { displayName?: string })?.displayName ?? "").trim();
-          return displayName ? { id: `user-${displayName}`, username: displayName, displayName } : undefined;
-        },
-      }) },
+      rooms: {
+        table: defineRoom(TableRoom, {
+          setId: "set-1",
+          cardLibrary: fixedCardLibrary(["spell-1"]),
+          authenticate: () => ({ id: "user-alice", username: "alice", displayName: "Alice" }),
+        }),
+        // No session cookie resolves to an account.
+        anonymous: defineRoom(TableRoom, {
+          setId: "set-1",
+          cardLibrary: fixedCardLibrary(["spell-1"]),
+          authenticate: () => undefined,
+        }),
+      },
     });
   });
 
@@ -42,41 +47,30 @@ describe("TableRoom sessions", () => {
   it("lets an authenticated account join by room id", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
 
-    const alice = await colyseus.sdk.joinById(room.roomId, { displayName: "Alice" });
+    const alice = await colyseus.sdk.joinById(room.roomId);
     await room.waitForNextPatch();
 
     expect(alice.roomId).toBe(room.roomId);
     expect(room.state.players.size).toBe(1);
   });
 
-  it("synchronizes account identity without exposing credentials", async () => {
-    const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    await room.waitForNextPatch();
-
-    expect([...alice.state.players.values()][0]?.userId).toBe("user-Alice");
+  it("rejects a connection without a signed-in account", async () => {
+    await expect(colyseus.sdk.joinOrCreate("anonymous")).rejects.toThrow("Authentication required.");
   });
 
-  it("makes the first player to join the host and leaves it there", async () => {
+  it("synchronizes account identity without exposing credentials", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
     await room.waitForNextPatch();
 
-    const host = room.state.players.get(room.state.hostPlayerId);
-    expect(host?.displayName).toBe("Alice");
-    expect(alice.state.hostPlayerId).toBe(room.state.hostPlayerId);
-    expect(bob.state.hostPlayerId).toBe(room.state.hostPlayerId);
-
-    const joinOrders = [...room.state.players.values()].map((player) => player.joinOrder);
-    expect(joinOrders).toEqual([0, 1]);
+    expect([...alice.state.players.values()][0]?.userId).toBe("user-alice");
   });
 
   it("keeps rooms public so the authenticated room browser can list them", async () => {
     const first = await colyseus.createRoom<TableRoom>("table");
-    await colyseus.connectTo(first, { displayName: "Alice" });
+    await colyseus.connectTo(first);
 
-    const outsider = await colyseus.sdk.joinOrCreate("table", { displayName: "Mallory" });
+    const outsider = await colyseus.sdk.joinOrCreate("table");
 
     expect(outsider.roomId).toBe(first.roomId);
   });
@@ -85,8 +79,8 @@ describe("TableRoom sessions", () => {
     const room = await colyseus.createRoom<TableRoom>("table", {
       reconnectionGraceSeconds: 5,
     });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    await colyseus.connectTo(room);
     const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
       definitionId: "spell-1",
       x: 0,
@@ -95,9 +89,7 @@ describe("TableRoom sessions", () => {
     await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, {
       object: { kind: "card", id: cardId },
     });
-    const playerId = [...room.state.players.values()].find(
-      (player) => player.displayName === "Alice",
-    )?.id as string;
+    const playerId = await sessionPlayerId(alice);
     const reconnectionToken = alice.reconnectionToken;
 
     await alice.leave(false);
@@ -123,8 +115,9 @@ describe("TableRoom sessions", () => {
     const room = await colyseus.createRoom<TableRoom>("table", {
       reconnectionGraceSeconds: 0.2,
     });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    const bob = await colyseus.connectTo(room);
+    const bobPlayerId = await sessionPlayerId(bob);
     const reconnectionToken = alice.reconnectionToken;
 
     alice.reconnection.enabled = false;
@@ -136,7 +129,7 @@ describe("TableRoom sessions", () => {
     await room.waitForNextPatch();
 
     expect(room.state.players.size).toBe(1);
-    expect([...room.state.players.values()][0]?.displayName).toBe("Bob");
+    expect([...room.state.players.keys()]).toEqual([bobPlayerId]);
     await expect(colyseus.sdk.reconnect(reconnectionToken)).rejects.toThrow();
   });
 
@@ -144,8 +137,8 @@ describe("TableRoom sessions", () => {
     const room = await colyseus.createRoom<TableRoom>("table", {
       reconnectionGraceSeconds: 5,
     });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    await colyseus.connectTo(room);
     const reconnectionToken = alice.reconnectionToken;
 
     await alice.leave();
@@ -159,7 +152,7 @@ describe("TableRoom sessions", () => {
     const room = await colyseus.createRoom<TableRoom>("table", {
       reconnectionGraceSeconds: 5,
     });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
     const playerId = await sessionPlayerId(alice);
     await room.waitForNextPatch();
 
@@ -171,61 +164,5 @@ describe("TableRoom sessions", () => {
     const rejoined = await colyseus.sdk.reconnect(reconnectionToken);
 
     expect(await sessionPlayerId(rejoined)).toBe(playerId);
-  });
-
-  it("keeps the host while they are only disconnected, then migrates on expiry", async () => {
-    const room = await colyseus.createRoom<TableRoom>("table", {
-      reconnectionGraceSeconds: 0.2,
-    });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    await colyseus.connectTo(room, { displayName: "Bob" });
-    const carol = await colyseus.connectTo(room, { displayName: "Carol" });
-    const hostPlayerId = room.state.hostPlayerId;
-
-    alice.reconnection.enabled = false;
-    await alice.leave(false);
-    await room.waitForNextPatch();
-    expect(room.state.hostPlayerId).toBe(hostPlayerId);
-
-    await wait(400);
-    await room.waitForNextPatch();
-
-    const host = room.state.players.get(room.state.hostPlayerId);
-    expect(host?.displayName).toBe("Bob");
-    expect(carol.state.hostPlayerId).toBe(room.state.hostPlayerId);
-  });
-
-  it("migrates the host immediately when they leave on purpose", async () => {
-    const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
-
-    await alice.leave();
-    await room.waitForNextPatch();
-
-    expect(room.state.players.get(room.state.hostPlayerId)?.displayName).toBe("Bob");
-    expect(bob.state.hostPlayerId).toBe(room.state.hostPlayerId);
-  });
-
-  it("gives the room to a returning player when the host left it empty", async () => {
-    const room = await colyseus.createRoom<TableRoom>("table", {
-      reconnectionGraceSeconds: 5,
-    });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    const bob = await colyseus.connectTo(room, { displayName: "Bob" });
-    const bobToken = bob.reconnectionToken;
-
-    // Bob drops first, so no connected player is left to inherit the room.
-    await bob.leave(false);
-    await room.waitForNextPatch();
-    await alice.leave();
-    await room.waitForNextPatch();
-    expect(room.state.hostPlayerId).toBe("");
-
-    const rejoined = await colyseus.sdk.reconnect(bobToken);
-    await room.waitForNextPatch();
-
-    expect(room.state.players.get(room.state.hostPlayerId)?.displayName).toBe("Bob");
-    expect(rejoined.state.hostPlayerId).toBe(room.state.hostPlayerId);
   });
 });

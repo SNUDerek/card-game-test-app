@@ -148,9 +148,10 @@ Each import creates a new, independent set. Re-importing the same folder creates
 second set rather than updating the first. Imported artwork is stored by content
 hash under `DATA_DIR/images`.
 
-The library HTTP API (`/api/sets`, `/api/sets/:id/cards`, `/api/images`, decks,
-fork, and export) supports editing sets and cards. Editor screens in the browser are
-still to come.
+The browser library supports creating, renaming, archiving, restoring, forking, and
+exporting sets. A set's Cards tab provides search, type filtering, image upload and
+reuse, and live card previews. Its Decks tab supports manual deck building and seeded
+random generation.
 
 ### Card file format
 
@@ -185,7 +186,8 @@ game rules; it provides the primitives to simulate physical card interactions:
 1. **Rooms:** Sign in, pick a set, name the room, and create it. Share the room link
    with other signed-in players. A room ends when the last person leaves.
 2. **Card browser:** Open the side panel to browse the cards of the room's set.
-3. **Spawning cards:** Drag any card from the card browser onto the tabletop.
+3. **Spawning cards and decks:** Drag a card onto the table, deal a saved deck, or
+   generate and deal a shuffled deck from the side panel.
 4. **Basic interactions:**
    - **Move:** Drag and drop cards anywhere on the table.
    - **Preview:** Hover over a card to view a magnified preview.
@@ -198,6 +200,8 @@ game rules; it provides the primitives to simulate physical card interactions:
      you draw the top card, shuffle, or delete the stack.
 6. **Board image:** **Download board image** in the room panel saves a PNG of the
    whole table.
+7. **Room lifecycle:** Anyone can edit the room details or end the room. Idle rooms
+   show a warning before closing; **Keep open** resets the timer.
 
 ## Test cards
 

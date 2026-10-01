@@ -36,7 +36,6 @@ function fakeRoom(state: Partial<ClientRoomState> = {}) {
     cards: new Map(),
     stacks: new Map(),
     players: new Map(),
-    hostPlayerId: "",
     setId: "",
     name: "",
     description: "",
@@ -62,7 +61,6 @@ describe("useRoomSync", () => {
       cards: new Map([["c1", card("c1", { x: 5 })]]),
       stacks: new Map([["s1", stack("s1", ["c1", "c2"])]]),
       players: new Map([["p1", player("p1", 0)]]),
-      hostPlayerId: "p1",
       setId: "set-1",
       name: "Friday game",
       description: "Bring snacks",
@@ -76,7 +74,6 @@ describe("useRoomSync", () => {
     expect(result.current.cards).toEqual([card("c1", { x: 5 })]);
     expect(result.current.stacks).toEqual([stack("s1", ["c1", "c2"])]);
     expect(result.current.players).toEqual([player("p1", 0)]);
-    expect(result.current.hostPlayerId).toBe("p1");
     expect(result.current.setId).toBe("set-1");
   });
 
@@ -125,7 +122,6 @@ describe("useRoomSync", () => {
       cards: new Map([["c1", card("c1")]]),
       stacks: new Map([["s1", stack("s1", ["c1", "c2"])]]),
       players: new Map([["p1", player("p1", 0)]]),
-      hostPlayerId: "p1",
       setId: "set-1",
     });
     const { result } = renderHook(() => useRoomSync());
@@ -136,7 +132,6 @@ describe("useRoomSync", () => {
     expect(result.current.cards).toEqual([]);
     expect(result.current.stacks).toEqual([]);
     expect(result.current.players).toEqual([]);
-    expect(result.current.hostPlayerId).toBe("");
     expect(result.current.setId).toBe("");
   });
 });

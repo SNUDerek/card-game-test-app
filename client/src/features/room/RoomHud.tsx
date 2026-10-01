@@ -7,14 +7,10 @@ import { useBoardImageDownload } from "../../tabletop/board-export/useBoardImage
 import { playerColor } from "./player-colors";
 import "./RoomHud.css";
 
-/**
- * Local-only room overlay: who is here, who is host, and the link to share.
- * Host is derived by comparing PlayerIds against the room's canonical
- * hostPlayerId — there is no per-player host flag to keep in sync.
- */
+/** Local-only room overlay: who is here and the link to share. */
 export function RoomHud() {
   const {
-    roomId, roomName, roomDescription, players, hostPlayerId, selfPlayerId,
+    roomId, roomName, roomDescription, players, selfPlayerId,
     leaveRoom, endRoom, updateRoomDetails,
   } = useMultiplayer();
   const [copied, setCopied] = useState(false);
@@ -120,7 +116,6 @@ export function RoomHud() {
             />
             <span className="room-hud-name">{player.displayName}</span>
             {player.id === selfPlayerId && <span className="room-hud-tag">you</span>}
-            {player.id === hostPlayerId && <span className="room-hud-tag is-host">host</span>}
             {!player.connected && <span className="room-hud-tag">reconnecting…</span>}
           </li>
         ))}
@@ -170,7 +165,7 @@ export function RoomHud() {
             { label: "Leave", tone: "danger", onClick: () => void leaveRoom() },
           ]}
         >
-          The room stays open until it times out, but you may want to save the board first.
+          Leaving ends the room and discards the table, so you may want to save the board first.
         </ConfirmDialog>
       )}
       {dialog === "end" && (

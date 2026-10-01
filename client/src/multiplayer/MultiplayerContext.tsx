@@ -56,7 +56,6 @@ interface MultiplayerValue extends TableCommands {
   /** Room id from the shared URL, present before this client has joined. */
   invitedRoomId: RoomId | null;
   selfPlayerId: PlayerId | null;
-  hostPlayerId: PlayerId;
   /** The library set the joined room plays; empty when not connected. */
   setId: string;
   roomName: string;
@@ -98,7 +97,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [idleEndsAt, setIdleEndsAt] = useState<number | null>(null);
   const endedMessage = useRef<string | null>(null);
-  const { players, cards, stacks, hostPlayerId, setId, roomName, roomDescription, syncRoom, resetSync } =
+  const { players, cards, stacks, setId, roomName, roomDescription, syncRoom, resetSync } =
     useRoomSync();
   const catalogListeners = useRef(new Set<(event: CatalogChangedEvent) => void>());
   const commands = useTableCommands(roomRef);
@@ -272,7 +271,6 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       roomId,
       invitedRoomId,
       selfPlayerId,
-      hostPlayerId,
       setId,
       roomName,
       roomDescription,
@@ -295,7 +293,6 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       roomId,
       invitedRoomId,
       selfPlayerId,
-      hostPlayerId,
       setId,
       roomName,
       roomDescription,
