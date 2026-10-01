@@ -3,7 +3,7 @@ import { defineServer, defineRoom } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { PROTOCOL_VERSION } from "@card-table/shared";
 import {
-  PORT, CARDS_DIR, DATABASE_FILE, COOKIE_SECURE, SIGNUP_PASSCODE, TRUST_CLOUDFLARE_IP,
+  PORT, CARDS_DIR, DATA_DIR, DATABASE_FILE, COOKIE_SECURE, SIGNUP_PASSCODE, TRUST_CLOUDFLARE_IP,
   requireAuthPepper, trustProxySetting,
 } from "./config/env.js";
 import {
@@ -18,11 +18,17 @@ import { UserRepository } from "./auth/users.js";
 import { SessionRepository } from "./auth/sessions.js";
 import { findRequestUser, requireUser } from "./auth/middleware.js";
 import { registerAuthRoutes } from "./auth/routes.js";
+import { WorkspaceRepository } from "./library/workspace-repository.js";
+import { ImageStore } from "./library/image-store.js";
+import { registerWorkspaceRoutes, workspaceErrorHandler } from "./http/workspace-routes.js";
+import { registerRoomRoutes } from "./http/room-routes.js";
 
 const authPepper = requireAuthPepper();
 const database = openDatabase(DATABASE_FILE);
 const users = new UserRepository(database);
 const sessions = new SessionRepository(database);
+const workspace = new WorkspaceRepository(database);
+const images = new ImageStore(database, DATA_DIR);
 sessions.deleteExpired();
 const sessionCleanup = setInterval(() => sessions.deleteExpired(), 24 * 60 * 60 * 1_000);
 sessionCleanup.unref();
@@ -60,8 +66,12 @@ const server = defineServer({
       trustCloudflareIp: TRUST_CLOUDFLARE_IP,
     });
     app.use("/api", requireUser(sessions));
+    app.use("/images", requireUser(sessions));
+    registerRoomRoutes(app, workspace);
+    registerWorkspaceRoutes(app, workspace, images);
     registerCardRoutes(app, cardCatalog);
     app.use("/cards", requireUser(sessions), express.static(CARDS_DIR));
+    app.use(workspaceErrorHandler);
   },
 });
 

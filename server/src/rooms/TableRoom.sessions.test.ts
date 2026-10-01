@@ -70,13 +70,13 @@ describe("TableRoom sessions", () => {
     expect(joinOrders).toEqual([0, 1]);
   });
 
-  it("keeps rooms out of matchmaking so the id is the only way in", async () => {
+  it("keeps rooms public so the authenticated room browser can list them", async () => {
     const first = await colyseus.createRoom<TableRoom>("table");
     await colyseus.connectTo(first, { displayName: "Alice" });
 
     const outsider = await colyseus.sdk.joinOrCreate("table", { displayName: "Mallory" });
 
-    expect(outsider.roomId).not.toBe(first.roomId);
+    expect(outsider.roomId).toBe(first.roomId);
   });
 
   it("restores the same player identity after an unconsented drop", async () => {

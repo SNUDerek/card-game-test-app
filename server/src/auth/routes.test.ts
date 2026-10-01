@@ -24,7 +24,9 @@ beforeEach(async () => {
   });
   app.get("/health", (_req, res) => res.json({ ok: true }));
   app.use("/api", requireUser(sessions));
+  app.use("/images", requireUser(sessions));
   app.get("/api/cards", (_req, res) => res.json({ cards: [] }));
+  app.get("/images/example", (_req, res) => res.send("image"));
   server = await new Promise<Server>((resolve) => {
     const running = app.listen(0, () => resolve(running));
   });
@@ -103,7 +105,10 @@ describe("account routes", () => {
     expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
     expect((await fetch(`${baseUrl}/api/auth/me`)).status).toBe(401);
     expect((await fetch(`${baseUrl}/api/cards`)).status).toBe(401);
+    expect((await fetch(`${baseUrl}/api/sets`)).status).toBe(401);
+    expect((await fetch(`${baseUrl}/api/rooms`)).status).toBe(401);
+    expect((await fetch(`${baseUrl}/api/images`)).status).toBe(401);
+    expect((await fetch(`${baseUrl}/images/example`)).status).toBe(401);
     expect((await fetch(`${baseUrl}/api/future-route`)).status).toBe(401);
   });
 });
-

@@ -60,6 +60,10 @@ export interface TableRoomOptions {
   reconnectionGraceSeconds?: number;
   /** Per-connection command budget. Defaults to DEFAULT_COMMAND_RATE_LIMIT. */
   commandRateLimit?: RateLimitOptions;
+  setId?: string;
+  setName?: string;
+  name?: string;
+  description?: string;
 }
 
 /**
@@ -137,7 +141,7 @@ export class TableRoom extends Room<{ state: RoomState }> {
     });
   }
 
-  onCreate(options: TableRoomOptions = {}) {
+  async onCreate(options: TableRoomOptions = {}) {
     this.setState(new RoomState());
     this.cardDefinitionIds = new Set(options.cardDefinitionIds ?? []);
     this.lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
@@ -145,8 +149,13 @@ export class TableRoom extends Room<{ state: RoomState }> {
     this.authenticate = options.authenticate ?? (() => undefined);
     this.reconnectionGraceSeconds =
       options.reconnectionGraceSeconds ?? DEFAULT_RECONNECTION_GRACE_SECONDS;
-    // Rooms are shared by URL, never matchmade: keep them out of any listing.
-    void this.setPrivate(true);
+    await this.setMetadata({
+      name: options.name ?? "Table",
+      description: options.description ?? "",
+      setId: options.setId ?? "",
+      setName: options.setName ?? "",
+    });
+    await this.setPrivate(false);
     this.rateLimiter = new CommandRateLimiter(
       options.commandRateLimit ?? DEFAULT_COMMAND_RATE_LIMIT,
     );
@@ -233,6 +242,11 @@ export class TableRoom extends Room<{ state: RoomState }> {
       Math.min(this.lockTimeoutMs, 250),
     );
     console.log(`TableRoom created: ${this.roomId}`);
+  }
+
+  async endRoom(editorName: string): Promise<void> {
+    this.broadcast("ROOM_ENDED", { message: `Room ended by ${editorName}.` });
+    await this.disconnect(4000);
   }
 
   onAuth(_client: Client, options: unknown, context: AuthContext): CurrentUser {
