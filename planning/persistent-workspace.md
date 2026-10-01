@@ -550,11 +550,11 @@ Each phase ships working software and leaves `npm test` green.
 | # | Phase | Why this position |
 |---|---|---|
 | 0 | **DB foundation**: `better-sqlite3`, `DATA_DIR`, migration runner, repository test harness (in-memory `:memory:` DB), Docker volume | Everything else stores data. Small and low risk. |
-| 1 | **Accounts**: users, sessions, passcode-gated register, login UI, `requireUser`, cookie-authed `onAuth`, remove the display-name field and room passwords | Needed before anything is exposed on a public host, especially uploads. It supplies `created_by` for later tables. It also touches the most existing code (lobby and join flow), so doing it first avoids rework. |
+| 1 | **Accounts**: users, sessions, passcode-gated register, login UI, `requireUser`, cookie-authed `onAuth`, remove the display-name field and room passwords, remove `PUBLIC_SERVER_URL` (single origin, so session cookies reach `/api` and the socket) | Needed before anything is exposed on a public host, especially uploads. It supplies `created_by` for later tables. It also touches the most existing code (lobby and join flow), so doing it first avoids rework. |
 | 2 | **Sets and cards**: CRUD, uploads/image picker, cache, file importer, editor UI, set-scoped temporary rooms and set usage locks | Stable library data and a usable editing workflow. |
 | 3 | **Decks and dealing**: CRUD, editor, simple generator, `SPAWN_DECK`, set fork | Removes manual drag-and-shuffle; forks allow editing cards during playtests. |
 | 4 | **Room UX and exports**: live-room browser (room metadata), name/description editing, idle timeout, End room, last-person warning, set ZIP export, board PNG download | Makes the hosted tool and its output accessible to colleagues. |
-| 5 | **Deployment and documentation**: remove `PUBLIC_SERVER_URL`, `TRUST_PROXY`, Cloudflare Tunnel/HTTPS guide, README rewrite, database + images backup and restore instructions | Complete before the team relies on the hosted workspace. No room persistence or purge tooling. |
+| 5 | **Deployment and documentation**: `TRUST_PROXY`, Cloudflare Tunnel/HTTPS guide, README rewrite, database + images backup and restore instructions | Complete before the team relies on the hosted workspace. No room persistence or purge tooling. |
 
 Suggested PR cut points: phases 0 and 1 together, then one PR per phase. Phase 2 is the
 largest and could split into server/API and editor UI. Phase 3 could split into
@@ -592,3 +592,80 @@ largest and could split into server/API and editor UI. Phase 3 could split into
 - CSV and printable set sheets can follow if the portable package does not meet the team's
   sharing needs. Board PNG download is part of the initial scope.
 - Per-set card-back images remain out of scope.
+
+---
+
+## 8. Parallel work plan
+
+Phases 0 and 1 (DB foundation and accounts) are in progress. This section lists which
+remaining work can proceed alongside them and which must wait.
+
+### 8.1 Can start now (no DB or auth needed)
+
+Pure functions, client-only code, or table-domain code. Build against today's code and
+wire into the library later.
+
+| Work | Why it's independent | Main files touched |
+|---|---|---|
+| **Board PNG export** (§4.6) | Client-only: separate Konva render reusing `CardRenderer`, bounds fitting, HUD button. | `client/src/tabletop/`, `RoomHud.tsx` |
+| **`generateDeck()` + tests** (§4.4) | Pure function with an injected RNG over `CardDefinition[]`. | new `server/src/library/generate-deck.ts` |
+| **`spawnDeck()` domain function + `SPAWN_DECK` `entries` variant** | Table domain only. Validate against the existing `cardDefinitionIds` for now; switch to the set-scoped cache later. Skip the `deckId` source. | `server/src/commands/`, `shared/` schemas |
+| **Client image crop/resize utility** | Pure canvas helper (square crop, ≤512 px, export). | new `client/src/features/sets/` util |
+| **Set ZIP builder** | `fflate` plus manifest building from a plain snapshot object. Wire to a DB read later. | new `server/src/library/export-set.ts` |
+| **Deployment docs** | Cloudflare Tunnel guide, backup/restore instructions, `.env.example` notes. | `README.md`, docs |
+| **Idle-timeout logic** | Activity timer, warning event, and Keep-open as a small unit-tested module. | new room module (see `TableRoom` hotspot in §8.5) |
+
+### 8.2 Can start once phase 0 lands (migration runner and test harness)
+
+These run in parallel with auth, provided their migrations are ordered after `users`:
+
+- Library migrations and repositories: `images`, `card_sets`, `cards`, `decks`, `deck_cards`.
+- `forkSet()`: one transaction, testable against `:memory:`.
+- Image store: hash, `image-size` check, write to `DATA_DIR/images`, insert row.
+- `CardLibrary` cache with write-through and the `changed(setId)` emitter.
+- Importer CLI (`loadCardCatalog()` → `cards:import`).
+- Usage registry: plain in-memory `setId → roomIds` map with tests.
+
+### 8.3 Must wait for auth
+
+- Every new HTTP route (sets, cards, decks, images, rooms, export), because each sits behind
+  `requireUser` and the 401 route-walk test.
+- `POST /api/rooms` creating rooms over HTTP, which depends on `onAuth` and the join-flow
+  rewrite.
+- Room browser and End room.
+- Router and app shell (§4.7). It is technically independent but rewrites `App.tsx` and the
+  lobby, which auth is also rewriting. Do it right after auth, or fold the router into the
+  auth PR.
+
+### 8.4 Critical path after auth
+
+```text
+set-scoped rooms + usage registry
+ ├─ CATALOG_CHANGED live updates
+ ├─ archive 409s / "In use by" UI
+ ├─ SPAWN_DECK { source: "deck" }
+ └─ End room / idle timeout releasing locks
+```
+
+### 8.5 Merge-conflict hotspots
+
+Coordinate on these or assign a single owner:
+
+- **`TableRoom`:** auth (`onAuth`, password removal), room metadata, idle timeout, set
+  binding, and `SPAWN_DECK` all touch it. Keep parallel work in separate modules with thin
+  hooks into the room.
+- **`shared/` card schemas:** `CardDefinitionSchema` gains `setId`, `revision`, and
+  `archived`. Let the library track make that change once.
+- **`App.tsx`, `Lobby.tsx`, `endpoint.ts`:** auth, the router, and the `PUBLIC_SERVER_URL`
+  removal. Removing `PUBLIC_SERVER_URL` is required for same-origin cookies, so it is part
+  of phase 1 (§6).
+- **`docker-compose.yml` and `.env.example`:** data volume, new env vars, `TRUST_PROXY`.
+
+### 8.6 Suggested tracks
+
+1. **Track A (in progress):** DB and auth, then router and app shell.
+2. **Track B (start now):** board PNG export, then the last-person leave dialog once
+   routing exists.
+3. **Track C (start now):** `generateDeck`, the `spawnDeck` `entries` variant, and the ZIP
+   builder. After phase 0: library repos, fork, image store, and cache.
+4. **Track D (after auth):** routes and editor UI on top of the Track C modules.
