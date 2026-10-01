@@ -59,6 +59,7 @@ export function useRoomSync(): RoomSync {
         [...state.players.values()]
           .map((player) => ({
             id: player.id,
+            userId: player.userId,
             displayName: player.displayName,
             connected: player.connected,
             joinOrder: player.joinOrder,

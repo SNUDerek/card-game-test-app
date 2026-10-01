@@ -26,8 +26,8 @@ vi.mock("../../tabletop/board-export/useBoardImageDownload", () => ({
   useBoardImageDownload: () => boardImage,
 }));
 
-const alice: Player = { id: "p-alice", displayName: "Alice", connected: true, joinOrder: 0 };
-const bob: Player = { id: "p-bob", displayName: "Bob", connected: true, joinOrder: 1 };
+const alice: Player = { id: "p-alice", userId: "u-alice", displayName: "Alice", connected: true, joinOrder: 0 };
+const bob: Player = { id: "p-bob", userId: "u-bob", displayName: "Bob", connected: true, joinOrder: 1 };
 
 beforeEach(() => {
   vi.clearAllMocks();

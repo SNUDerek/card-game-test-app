@@ -4,6 +4,7 @@ import type { CardFace, CardOrientation } from "@card-table/shared";
 export const PlayerState = schema(
   {
     id: t.string(),
+    userId: t.string(),
     displayName: t.string(),
     connected: t.boolean().default(true),
     joinOrder: t.number(),

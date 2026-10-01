@@ -1,5 +1,8 @@
 FROM node:22-slim AS build
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY shared/package.json shared/package.json
 COPY server/package.json server/package.json

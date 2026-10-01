@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { CloseCode, Room, ServerError, type AuthContext, type Client } from "colyseus";
 import { z } from "zod";
 import {
-  JoinRoomOptionsSchema,
   ClaimObjectPayloadSchema,
   ReleaseObjectPayloadSchema,
   MoveCardPayloadSchema,
@@ -16,7 +15,7 @@ import {
   SetHoverPayloadSchema,
   TABLE_COMMANDS,
   ROOM_COMMANDS,
-  type JoinRoomOptions,
+  type CurrentUser,
   type PlayerId,
   type SessionResult,
   type SetHoverResult,
@@ -37,7 +36,6 @@ import { setCardOrientation } from "../commands/card/tap-card.js";
 import { bringToFront, raiseToFront } from "../commands/card/bring-to-front.js";
 import { deleteCard } from "../commands/card/delete-card.js";
 import { assignHostIfVacant, migrateHostIfNeeded } from "./host.js";
-import { hashRoomPassword, verifyRoomPassword, type RoomPasswordHash } from "./room-access.js";
 import { stackCard } from "../commands/stack/stack-card.js";
 import { moveStack } from "../commands/stack/move-stack.js";
 import { drawTopCard } from "../commands/stack/draw-top-card.js";
@@ -56,8 +54,8 @@ export interface TableRoomOptions {
   lockTimeoutMs?: number;
   /** Hard cap on joined and reconnecting players in this room. */
   maxClients?: number;
-  /** Set by the creating client; never synchronized to room state. */
-  password?: string;
+  /** Resolves the session cookie to an account. Supplied by the server bootstrap. */
+  authenticate?: (cookieHeader: string | null, joinOptions: unknown) => CurrentUser | undefined;
   /** How long a dropped player keeps their identity. 0 disables reconnection. */
   reconnectionGraceSeconds?: number;
   /** Per-connection command budget. Defaults to DEFAULT_COMMAND_RATE_LIMIT. */
@@ -77,19 +75,11 @@ export const DEFAULT_OBJECT_LOCK_TIMEOUT_MS = 5_000;
 export const DEFAULT_RECONNECTION_GRACE_SECONDS = 30;
 export const DEFAULT_MAX_CLIENTS_PER_ROOM = 16;
 
-function parseJoinOptions(options: unknown): JoinRoomOptions {
-  const parsed = JoinRoomOptionsSchema.safeParse(options);
-  if (!parsed.success) {
-    throw new ServerError(400, "A display name between 1 and 50 characters is required.");
-  }
-  return parsed.data;
-}
-
 export class TableRoom extends Room<{ state: RoomState }> {
   private readonly playerIdBySessionId = new Map<string, PlayerId>();
   private cardDefinitionIds: ReadonlySet<string> = new Set();
   private lockTimeoutMs = DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
-  private passwordHash: RoomPasswordHash | undefined;
+  private authenticate: (cookieHeader: string | null, joinOptions: unknown) => CurrentUser | undefined = () => undefined;
   private reconnectionGraceSeconds = DEFAULT_RECONNECTION_GRACE_SECONDS;
   private joinCount = 0;
   private rateLimiter = new CommandRateLimiter();
@@ -152,7 +142,7 @@ export class TableRoom extends Room<{ state: RoomState }> {
     this.cardDefinitionIds = new Set(options.cardDefinitionIds ?? []);
     this.lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
     this.maxClients = options.maxClients ?? DEFAULT_MAX_CLIENTS_PER_ROOM;
-    this.passwordHash = options.password ? hashRoomPassword(options.password) : undefined;
+    this.authenticate = options.authenticate ?? (() => undefined);
     this.reconnectionGraceSeconds =
       options.reconnectionGraceSeconds ?? DEFAULT_RECONNECTION_GRACE_SECONDS;
     // Rooms are shared by URL, never matchmade: keep them out of any listing.
@@ -245,20 +235,18 @@ export class TableRoom extends Room<{ state: RoomState }> {
     console.log(`TableRoom created: ${this.roomId}`);
   }
 
-  onAuth(_client: Client, options: unknown, _context: AuthContext): JoinRoomOptions {
-    const joinOptions = parseJoinOptions(options);
-    if (!verifyRoomPassword(this.passwordHash, joinOptions.password)) {
-      throw new ServerError(401, "Incorrect room password.");
-    }
-    return joinOptions;
+  onAuth(_client: Client, options: unknown, context: AuthContext): CurrentUser {
+    const user = this.authenticate(context.headers.get("cookie"), options);
+    if (!user) throw new ServerError(401, "Authentication required.");
+    return user;
   }
 
-  onJoin(client: Client, options: unknown) {
-    const { displayName } = parseJoinOptions(options);
+  onJoin(client: Client, _options: unknown, user: CurrentUser) {
     const playerId = randomUUID();
     const player = new PlayerState({
       id: playerId,
-      displayName,
+      userId: user.id,
+      displayName: user.displayName,
       connected: true,
       joinOrder: this.joinCount++,
     });
