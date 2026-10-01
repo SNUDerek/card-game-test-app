@@ -15,7 +15,7 @@ export interface BoardImageDownload {
  * server and no other player sees it happen.
  */
 export function useBoardImageDownload(): BoardImageDownload {
-  const { cards, stacks, roomId } = useMultiplayer();
+  const { cards, stacks, roomId, roomName } = useMultiplayer();
   const { definitionsById } = useCardCatalog();
   const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +25,7 @@ export function useBoardImageDownload(): BoardImageDownload {
     setError(null);
     try {
       const blob = await renderBoardImage({ cards, stacks, definitionsById });
-      downloadBlob(blob, boardImageFileName(roomId ?? "table", new Date()));
+      downloadBlob(blob, boardImageFileName(roomName || roomId || "table", new Date()));
     } catch (cause: unknown) {
       console.error("Board image export failed:", cause);
       setError(
@@ -34,7 +34,7 @@ export function useBoardImageDownload(): BoardImageDownload {
     } finally {
       setIsExporting(false);
     }
-  }, [cards, stacks, definitionsById, roomId]);
+  }, [cards, stacks, definitionsById, roomId, roomName]);
 
   return { download, isExporting, error };
 }

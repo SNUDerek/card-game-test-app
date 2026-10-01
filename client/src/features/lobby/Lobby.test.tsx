@@ -5,6 +5,7 @@ import { Lobby } from "./Lobby";
 
 const createRoom = vi.fn().mockResolvedValue(undefined);
 const joinRoom = vi.fn().mockResolvedValue(undefined);
+const endRoom = vi.fn().mockResolvedValue(undefined);
 const logout = vi.fn().mockResolvedValue(undefined);
 const multiplayer = {
   status: "disconnected" as ConnectionStatus,
@@ -12,6 +13,7 @@ const multiplayer = {
   connectionError: null as string | null,
   createRoom,
   joinRoom,
+  endRoom,
 };
 
 vi.mock("../../multiplayer/MultiplayerContext", () => ({
@@ -26,11 +28,16 @@ beforeEach(() => {
   multiplayer.status = "disconnected";
   multiplayer.invitedRoomId = null;
   multiplayer.connectionError = null;
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
-    sets: [{ id: "set-1", name: "Skirmish", description: "", forkedFromSetId: null,
-      forkedFromSetName: null, revision: 1, archived: false, cardCount: 0, deckCount: 0,
-      createdAt: 1, updatedAt: 1 }],
-  }), { status: 200, headers: { "Content-Type": "application/json" } })));
+  const json = (body: unknown) =>
+    new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+  vi.stubGlobal("fetch", vi.fn(async (path: string) => path === "/api/rooms"
+    ? json({ rooms: [{ id: "ROOM1", name: "Friday game", description: "Bring snacks", setName: "Skirmish",
+      playerCount: 2, maxPlayers: 8 }] })
+    : json({
+      sets: [{ id: "set-1", name: "Skirmish", description: "", forkedFromSetId: null,
+        forkedFromSetName: null, revision: 1, archived: false, cardCount: 0, deckCount: 0,
+        createdAt: 1, updatedAt: 1 }],
+    })));
 });
 
 function typeInto(label: string | RegExp, value: string) {
@@ -81,5 +88,33 @@ describe("Lobby", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("Could not connect.");
     expect(screen.getByRole("button", { name: "Connecting…" })).toBeDisabled();
+  });
+
+  it("passes an optional description when creating a room", async () => {
+    render(<Lobby />);
+    await waitFor(() => expect(screen.getByLabelText("Card set")).toHaveValue("set-1"));
+    typeInto("Room name", "Playtest");
+    typeInto(/Description/, "Round one");
+    fireEvent.click(screen.getByRole("button", { name: "Create room" }));
+
+    expect(createRoom).toHaveBeenCalledWith({ setId: "set-1", name: "Playtest", description: "Round one" });
+  });
+
+  it("lists open rooms and joins one from the browser", async () => {
+    render(<Lobby />);
+    expect(await screen.findByText("Friday game")).toBeInTheDocument();
+    expect(screen.getByText("Skirmish · 2/8 players")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Join Friday game" }));
+    expect(joinRoom).toHaveBeenCalledWith({ roomId: "ROOM1" });
+  });
+
+  it("asks for confirmation before ending a room", async () => {
+    render(<Lobby />);
+    fireEvent.click(await screen.findByRole("button", { name: "End Friday game" }));
+    expect(endRoom).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "End room" }));
+    await waitFor(() => expect(endRoom).toHaveBeenCalledWith("ROOM1"));
   });
 });

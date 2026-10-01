@@ -38,6 +38,8 @@ function fakeRoom(state: Partial<ClientRoomState> = {}) {
     players: new Map(),
     hostPlayerId: "",
     setId: "",
+    name: "",
+    description: "",
     ...state,
   };
   const room = {
@@ -62,11 +64,15 @@ describe("useRoomSync", () => {
       players: new Map([["p1", player("p1", 0)]]),
       hostPlayerId: "p1",
       setId: "set-1",
+      name: "Friday game",
+      description: "Bring snacks",
     });
     const { result } = renderHook(() => useRoomSync());
 
     act(() => result.current.syncRoom(room));
 
+    expect(result.current.roomName).toBe("Friday game");
+    expect(result.current.roomDescription).toBe("Bring snacks");
     expect(result.current.cards).toEqual([card("c1", { x: 5 })]);
     expect(result.current.stacks).toEqual([stack("s1", ["c1", "c2"])]);
     expect(result.current.players).toEqual([player("p1", 0)]);

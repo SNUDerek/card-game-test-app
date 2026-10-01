@@ -9,6 +9,8 @@ export interface RoomSync {
   hostPlayerId: PlayerId;
   /** The room's library set; empty until the first state arrives. */
   setId: string;
+  roomName: string;
+  roomDescription: string;
   /** Copy the room's current state, then track every subsequent patch. */
   syncRoom(room: TableRoom): void;
   /** Drop synchronized state back to its empty, disconnected form. */
@@ -28,6 +30,8 @@ export function useRoomSync(): RoomSync {
   const [stacks, setStacks] = useState<CardStack[]>([]);
   const [hostPlayerId, setHostPlayerId] = useState<PlayerId>("");
   const [setId, setSetId] = useState("");
+  const [roomName, setRoomName] = useState("");
+  const [roomDescription, setRoomDescription] = useState("");
 
   const syncRoom = useCallback((room: TableRoom) => {
     const syncState = (state: ClientRoomState) => {
@@ -72,6 +76,8 @@ export function useRoomSync(): RoomSync {
       );
       setHostPlayerId(state.hostPlayerId);
       setSetId(state.setId);
+      setRoomName(state.name ?? "");
+      setRoomDescription(state.description ?? "");
     };
 
     syncState(room.state);
@@ -84,7 +90,9 @@ export function useRoomSync(): RoomSync {
     setStacks([]);
     setHostPlayerId("");
     setSetId("");
+    setRoomName("");
+    setRoomDescription("");
   }, []);
 
-  return { players, cards, stacks, hostPlayerId, setId, syncRoom, resetSync };
+  return { players, cards, stacks, hostPlayerId, setId, roomName, roomDescription, syncRoom, resetSync };
 }
