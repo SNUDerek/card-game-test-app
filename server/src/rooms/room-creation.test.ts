@@ -15,4 +15,14 @@ describe("RoomCreationRegistry", () => {
     const expired = registry.issue("set-a", 3_000);
     expect(registry.consume(expired, "set-a", 33_001)).toBe(false);
   });
+
+  it("sweeps expired pending tokens when issuing a new token", () => {
+    const registry = new RoomCreationRegistry();
+    registry.issue("set-a", 0);
+    registry.issue("set-b", 10_000);
+    expect(registry.pendingCount).toBe(2);
+
+    registry.issue("set-c", 30_001);
+    expect(registry.pendingCount).toBe(2);
+  });
 });

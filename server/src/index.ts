@@ -3,7 +3,7 @@ import { defineServer, defineRoom } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { PROTOCOL_VERSION } from "@card-table/shared";
 import {
-  PORT, CARDS_DIR, DATA_DIR, DATABASE_FILE, COOKIE_SECURE, SIGNUP_PASSCODE, TRUST_CLOUDFLARE_IP,
+  PORT, CARDS_DIR, IMAGES_DIR, DATABASE_FILE, COOKIE_SECURE, SIGNUP_PASSCODE, TRUST_CLOUDFLARE_IP,
   requireAuthPepper, trustProxySetting,
 } from "./config/env.js";
 import {
@@ -31,7 +31,7 @@ const authPepper = requireAuthPepper();
 const database = openDatabase(DATABASE_FILE);
 const users = new UserRepository(database);
 const sessions = new SessionRepository(database);
-const images = new ImageStore(new ImageRepository(database), `${DATA_DIR}/images`);
+const images = new ImageStore(new ImageRepository(database), IMAGES_DIR);
 const usageRegistry = new SetUsageRegistry();
 const creationRegistry = new RoomCreationRegistry();
 const workspace = new WorkspaceService(database, images, usageRegistry);
@@ -74,12 +74,12 @@ const server = defineServer({
       cookieSecure: COOKIE_SECURE,
       trustCloudflareIp: TRUST_CLOUDFLARE_IP,
     });
-    app.use("/api", requireUser(sessions));
-    app.use("/images", requireUser(sessions));
-    registerRoomRoutes(app, workspace, undefined, creationRegistry);
+    app.use("/api", requireUser(sessions, COOKIE_SECURE));
+    app.use("/images", requireUser(sessions, COOKIE_SECURE));
+    registerRoomRoutes(app, { workspace, creationRegistry });
     registerWorkspaceRoutes(app, workspace, images);
     registerCardRoutes(app, cardCatalog);
-    app.use("/cards", requireUser(sessions), express.static(CARDS_DIR));
+    app.use("/cards", requireUser(sessions, COOKIE_SECURE), express.static(CARDS_DIR));
     app.use(workspaceErrorHandler);
   },
 });

@@ -78,6 +78,18 @@ describe("account routes", () => {
     expect(login.headers.get("set-cookie")).toContain("SameSite=Lax");
   });
 
+  it("refreshes the cookie when the database session slides", async () => {
+    const registration = await post("/api/auth/register", {
+      username: "sliding", displayName: "Sliding", password: "long-enough", signupCode: "invite-only",
+    });
+    const cookie = sessionCookie(registration);
+    database.prepare("UPDATE sessions SET expires_at = ?").run(Date.now() + 1_000);
+
+    const me = await fetch(`${baseUrl}/api/auth/me`, { headers: { Cookie: cookie } });
+    expect(me.status).toBe(200);
+    expect(me.headers.get("set-cookie")).toContain("Max-Age=2592000");
+  });
+
   it("rejects a bad signup code, duplicate username, and bad password", async () => {
     const account = { username: "alice", displayName: "Alice", password: "long-enough", signupCode: "invite-only" };
     expect((await post("/api/auth/register", { ...account, signupCode: "wrong" })).status).toBe(403);
@@ -103,12 +115,20 @@ describe("account routes", () => {
 
   it("leaves only health, login, register, and me checks public", async () => {
     expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
-    expect((await fetch(`${baseUrl}/api/auth/me`)).status).toBe(401);
-    expect((await fetch(`${baseUrl}/api/cards`)).status).toBe(401);
-    expect((await fetch(`${baseUrl}/api/sets`)).status).toBe(401);
-    expect((await fetch(`${baseUrl}/api/rooms`)).status).toBe(401);
-    expect((await fetch(`${baseUrl}/api/images`)).status).toBe(401);
-    expect((await fetch(`${baseUrl}/images/example`)).status).toBe(401);
+
+    const stack = (server as unknown as { _events: { request: { router: { stack: Array<{
+      route?: { path: string; methods: Record<string, boolean> };
+    }> } } } })._events.request.router.stack;
+    const publicRoutes = new Set(["POST /api/auth/login", "POST /api/auth/register", "GET /health"]);
+    const routes = stack.flatMap((layer) => layer.route
+      ? Object.keys(layer.route.methods).map((method) => ({ method: method.toUpperCase(), path: layer.route!.path }))
+      : []);
+    expect(routes.length).toBeGreaterThan(5);
+    for (const route of routes) {
+      if (publicRoutes.has(`${route.method} ${route.path}`)) continue;
+      const response = await fetch(`${baseUrl}${route.path}`, { method: route.method });
+      expect(response.status, `${route.method} ${route.path}`).toBe(401);
+    }
     expect((await fetch(`${baseUrl}/api/future-route`)).status).toBe(401);
   });
 });
