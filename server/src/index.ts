@@ -3,7 +3,7 @@ import { defineServer, defineRoom } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { PROTOCOL_VERSION } from "@card-table/shared";
 import {
-  PORT, CARDS_DIR, DATABASE_FILE, COOKIE_SECURE, SIGNUP_PASSCODE,
+  PORT, CARDS_DIR, DATABASE_FILE, COOKIE_SECURE, SIGNUP_PASSCODE, TRUST_CLOUDFLARE_IP,
   requireAuthPepper, trustProxySetting,
 } from "./config/env.js";
 import {
@@ -57,6 +57,7 @@ const server = defineServer({
       pepper: authPepper,
       signupPasscode: SIGNUP_PASSCODE,
       cookieSecure: COOKIE_SECURE,
+      trustCloudflareIp: TRUST_CLOUDFLARE_IP,
     });
     app.use("/api", requireUser(sessions));
     registerCardRoutes(app, cardCatalog);

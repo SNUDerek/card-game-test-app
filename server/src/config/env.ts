@@ -17,6 +17,7 @@ export function requireAuthPepper(): string {
 
 export const SIGNUP_PASSCODE = process.env.SIGNUP_PASSCODE || undefined;
 export const COOKIE_SECURE = process.env.COOKIE_SECURE === "true";
+export const TRUST_CLOUDFLARE_IP = process.env.TRUST_CLOUDFLARE_IP === "true";
 
 export function trustProxySetting(value = process.env.TRUST_PROXY): number | boolean | string {
   if (!value || value === "false") return false;

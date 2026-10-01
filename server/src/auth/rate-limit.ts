@@ -12,6 +12,7 @@ export class AuthRateLimiter {
   ) {}
 
   allow(keys: string[], now = Date.now()): boolean {
+    this.pruneExpired(now);
     const active = keys.map((key) => {
       const existing = this.buckets.get(key);
       if (!existing || existing.resetAt <= now) return { key, bucket: { count: 0, resetAt: now + this.windowMs } };
@@ -23,6 +24,12 @@ export class AuthRateLimiter {
       this.buckets.set(key, bucket);
     }
     return true;
+  }
+
+  private pruneExpired(now: number): void {
+    for (const [key, bucket] of this.buckets) {
+      if (bucket.resetAt <= now) this.buckets.delete(key);
+    }
   }
 }
 

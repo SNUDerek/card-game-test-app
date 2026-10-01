@@ -13,6 +13,8 @@ export interface AuthRouteOptions {
   pepper: string;
   signupPasscode?: string;
   cookieSecure: boolean;
+  /** Honor CF-Connecting-IP. Only safe when every request arrives through Cloudflare. */
+  trustCloudflareIp?: boolean;
   rateLimiter?: AuthRateLimiter;
 }
 
@@ -30,8 +32,8 @@ function clearSessionCookie(res: Response, secure: boolean): void {
   res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: "lax", secure, path: "/" });
 }
 
-function clientIp(req: Request): string {
-  const cloudflareIp = req.header("CF-Connecting-IP")?.trim();
+function clientIp(req: Request, trustCloudflareIp: boolean): string {
+  const cloudflareIp = trustCloudflareIp ? req.header("CF-Connecting-IP")?.trim() : undefined;
   return cloudflareIp || req.ip || "unknown";
 }
 
@@ -42,12 +44,13 @@ function isUniqueViolation(error: unknown): boolean {
 
 export function registerAuthRoutes(app: Application, options: AuthRouteOptions): void {
   const limiter = options.rateLimiter ?? new AuthRateLimiter();
+  const trustCloudflareIp = options.trustCloudflareIp ?? false;
   const json = express.json({ limit: "16kb", type: "application/json" });
 
   app.post("/api/auth/register", json, async (req, res) => {
     const parsed = RegisterRequestSchema.safeParse(req.body);
     const username = parsed.success ? parsed.data.username.toLocaleLowerCase() : "invalid";
-    if (!limiter.allow([`ip:${clientIp(req)}`, `username:${username}`])) {
+    if (!limiter.allow([`ip:${clientIp(req, trustCloudflareIp)}`, `username:${username}`])) {
       res.status(429).json({ error: "Too many attempts. Try again later." });
       return;
     }
@@ -84,7 +87,7 @@ export function registerAuthRoutes(app: Application, options: AuthRouteOptions):
   app.post("/api/auth/login", json, async (req, res) => {
     const parsed = LoginRequestSchema.safeParse(req.body);
     const username = parsed.success ? parsed.data.username.toLocaleLowerCase() : "invalid";
-    if (!limiter.allow([`ip:${clientIp(req)}`, `username:${username}`])) {
+    if (!limiter.allow([`ip:${clientIp(req, trustCloudflareIp)}`, `username:${username}`])) {
       res.status(429).json({ error: "Too many attempts. Try again later." });
       return;
     }

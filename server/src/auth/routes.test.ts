@@ -38,10 +38,10 @@ afterEach(async () => {
   server = undefined;
 });
 
-async function post(path: string, body?: object, cookie?: string) {
+async function post(path: string, body?: object, cookie?: string, headers: Record<string, string> = {}) {
   return fetch(`${baseUrl}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: cookie } : {}) },
+    headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: cookie } : {}), ...headers },
     body: body ? JSON.stringify(body) : undefined,
   });
 }
@@ -82,6 +82,21 @@ describe("account routes", () => {
     expect((await post("/api/auth/register", account)).status).toBe(201);
     expect((await post("/api/auth/register", { ...account, username: "ALICE" })).status).toBe(409);
     expect((await post("/api/auth/login", { username: "alice", password: "wrong" })).status).toBe(401);
+  });
+
+  it("does not let a spoofed CF-Connecting-IP bypass the per-IP limit", async () => {
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      const response = await post(
+        "/api/auth/register",
+        { username: `guess${attempt}`, displayName: "Guess", password: "long-enough", signupCode: "wrong" },
+        undefined,
+        { "CF-Connecting-IP": `203.0.113.${attempt}` },
+      );
+      statuses.push(response.status);
+    }
+    expect(statuses.slice(0, 10).every((status) => status === 403)).toBe(true);
+    expect(statuses[10]).toBe(429);
   });
 
   it("leaves only health, login, register, and me checks public", async () => {

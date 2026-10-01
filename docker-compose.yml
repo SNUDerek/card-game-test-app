@@ -14,6 +14,7 @@ services:
       SIGNUP_PASSCODE: ${SIGNUP_PASSCODE:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       TRUST_PROXY: ${TRUST_PROXY:-1}
+      TRUST_CLOUDFLARE_IP: ${TRUST_CLOUDFLARE_IP:-false}
     volumes:
       - ./cards:/app/cards:ro
       - workspace-data:/app/data
