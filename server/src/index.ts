@@ -3,9 +3,10 @@ import { WebSocketTransport } from "@colyseus/ws-transport";
 import { PROTOCOL_VERSION } from "@card-table/shared";
 import {
   PORT, DATABASE_FILE, IMAGES_DIR, COOKIE_SECURE, SIGNUP_PASSCODE, TRUST_CLOUDFLARE_IP,
-  requireAuthPepper, trustProxySetting, parseIdleTimeoutMinutes,
+  requireAuthPepper, trustProxySetting,
 } from "./config/env.js";
 import { TableRoom } from "./rooms/TableRoom.js";
+import { parseIdleTimeoutMinutes } from "./rooms/idle-timeout.js";
 import { openDatabase } from "./db/connection.js";
 import { UserRepository } from "./auth/users.js";
 import { SessionRepository } from "./auth/sessions.js";
@@ -27,7 +28,7 @@ const sessions = new SessionRepository(database);
 const images = new ImageStore(new ImageRepository(database), IMAGES_DIR);
 const usageRegistry = new SetUsageRegistry();
 const creationRegistry = new RoomCreationRegistry();
-const idleTimeoutMs = parseIdleTimeoutMinutes() * 60_000;
+const idleTimeoutMs = parseIdleTimeoutMinutes(process.env.ROOM_IDLE_TIMEOUT_MINUTES) * 60_000;
 const workspace = new WorkspaceService(database, images, usageRegistry);
 sessions.deleteExpired();
 const sessionCleanup = setInterval(() => sessions.deleteExpired(), 24 * 60 * 60 * 1_000);

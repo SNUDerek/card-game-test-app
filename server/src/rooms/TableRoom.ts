@@ -53,6 +53,7 @@ import {
   DEFAULT_COMMAND_RATE_LIMIT,
   type RateLimitOptions,
 } from "./rate-limit.js";
+import type { LibraryChange } from "../library/card-library.js";
 import type { SetUsageRegistry } from "../library/set-usage.js";
 import type { RoomCreationRegistry } from "./room-creation.js";
 import { RoomIdleTimeout, countsAsActivity } from "./idle-timeout.js";
@@ -113,7 +114,7 @@ export class TableRoom extends Room<{ state: RoomState }> {
   private idleTimeout: RoomIdleTimeout | undefined;
   private idleExpired = false;
   private displayNameFor: (userId: string) => string | undefined = () => undefined;
-  private readonly onLibraryChanged = (change: import("../library/card-library.js").LibraryChange) => {
+  private readonly onLibraryChanged = (change: LibraryChange) => {
     if (change.setId !== this.setId) return;
     if (change.cardIds.length === 0) {
       const set = this.libraryBinding?.currentSet();
