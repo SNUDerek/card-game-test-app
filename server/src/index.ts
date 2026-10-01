@@ -3,7 +3,7 @@ import { WebSocketTransport } from "@colyseus/ws-transport";
 import { PROTOCOL_VERSION } from "@card-table/shared";
 import {
   PORT, DATABASE_FILE, IMAGES_DIR, COOKIE_SECURE, SIGNUP_PASSCODE, TRUST_CLOUDFLARE_IP,
-  requireAuthPepper, trustProxySetting,
+  requireAuthPepper, trustProxySetting, parseIdleTimeoutMinutes,
 } from "./config/env.js";
 import { TableRoom } from "./rooms/TableRoom.js";
 import { openDatabase } from "./db/connection.js";
@@ -27,6 +27,7 @@ const sessions = new SessionRepository(database);
 const images = new ImageStore(new ImageRepository(database), IMAGES_DIR);
 const usageRegistry = new SetUsageRegistry();
 const creationRegistry = new RoomCreationRegistry();
+const idleTimeoutMs = parseIdleTimeoutMinutes() * 60_000;
 const workspace = new WorkspaceService(database, images, usageRegistry);
 sessions.deleteExpired();
 const sessionCleanup = setInterval(() => sessions.deleteExpired(), 24 * 60 * 60 * 1_000);
@@ -40,8 +41,10 @@ const server = defineServer({
       cardLibrary: workspace.cardLibrary,
       displayNameFor: (userId: string) => users.displayName(userId),
       usageRegistry,
+      deckLookup: workspace,
       creationRegistry,
       requireHttpCreation: true,
+      idleTimeoutMs,
     }),
   },
   express: (app) => {
@@ -59,7 +62,7 @@ const server = defineServer({
     });
     app.use("/api", requireUser(sessions, COOKIE_SECURE));
     app.use("/images", requireUser(sessions, COOKIE_SECURE));
-    registerRoomRoutes(app, { workspace, creationRegistry });
+    registerRoomRoutes(app, { workspace, creationRegistry, usageRegistry });
     registerWorkspaceRoutes(app, workspace, images);
     app.use(workspaceErrorHandler);
   },

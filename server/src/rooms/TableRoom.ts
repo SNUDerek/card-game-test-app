@@ -8,6 +8,7 @@ import {
   CardIdPayloadSchema,
   SpawnCardPayloadSchema,
   SpawnDeckPayloadSchema,
+  UpdateRoomMetadataPayloadSchema,
   StackCardPayloadSchema,
   MoveStackPayloadSchema,
   DrawCardPayloadSchema,
@@ -19,6 +20,7 @@ import {
   type CatalogChangedEvent,
   type CurrentUser,
   type RoomEndedEvent,
+  type RoomIdleWarningEvent,
   type PlayerId,
   type SessionResult,
   type SetHoverResult,
@@ -51,17 +53,12 @@ import {
   DEFAULT_COMMAND_RATE_LIMIT,
   type RateLimitOptions,
 } from "./rate-limit.js";
-import type { LibraryChange } from "../library/card-library.js";
 import type { SetUsageRegistry } from "../library/set-usage.js";
 import type { RoomCreationRegistry } from "./room-creation.js";
+import { RoomIdleTimeout, countsAsActivity } from "./idle-timeout.js";
+import { RoomLibraryBinding, type RoomCardLibrary, type RoomDeckLookup } from "./library-binding.js";
 
 /** The part of `CardLibrary` a room uses: membership checks and change events. */
-export interface RoomCardLibrary {
-  activeCardIds(setId: string): CardDefinitionLookup;
-  on(event: "changed", listener: (change: LibraryChange) => void): unknown;
-  off(event: "changed", listener: (change: LibraryChange) => void): unknown;
-}
-
 export interface TableRoomOptions {
   lockTimeoutMs?: number;
   /** Hard cap on joined and reconnecting players in this room. */
@@ -81,6 +78,9 @@ export interface TableRoomOptions {
   /** Names the editor in CATALOG_CHANGED notices. Supplied by the server bootstrap. */
   displayNameFor?: (userId: string) => string | undefined;
   usageRegistry?: SetUsageRegistry;
+  deckLookup?: RoomDeckLookup;
+  /** Undefined disables expiry; production supplies this from the environment. */
+  idleTimeoutMs?: number;
   creationRegistry?: RoomCreationRegistry;
   requireHttpCreation?: boolean;
   creationToken?: string;
@@ -108,11 +108,19 @@ export class TableRoom extends Room<{ state: RoomState }> {
   private joinCount = 0;
   private rateLimiter = new CommandRateLimiter();
   private setId: string | undefined;
-  private cardLibrary: RoomCardLibrary | undefined;
-  private usageRegistry: SetUsageRegistry | undefined;
+  private libraryBinding: RoomLibraryBinding | undefined;
+  private deckLookup: RoomDeckLookup | undefined;
+  private idleTimeout: RoomIdleTimeout | undefined;
+  private idleExpired = false;
   private displayNameFor: (userId: string) => string | undefined = () => undefined;
-  private readonly onLibraryChanged = (change: LibraryChange) => {
+  private readonly onLibraryChanged = (change: import("../library/card-library.js").LibraryChange) => {
     if (change.setId !== this.setId) return;
+    if (change.cardIds.length === 0) {
+      const set = this.libraryBinding?.currentSet();
+      // A rename is metadata, not just a catalog notification: room listings
+      // must immediately display the current set name.
+      if (set && this.metadata.setName !== set.name) void this.setMetadata({ ...this.metadata, setName: set.name });
+    }
     const event: CatalogChangedEvent = {
       setId: change.setId,
       changedCardIds: change.cardIds,
@@ -139,10 +147,10 @@ export class TableRoom extends Room<{ state: RoomState }> {
   private command<Schema extends z.ZodType>(
     name: string,
     schema: Schema,
-    run: (context: CommandContext, payload: z.infer<Schema>) => unknown,
+    run: (context: CommandContext, payload: z.infer<Schema>) => unknown | Promise<unknown>,
     rejectionStatus = 409,
   ): void {
-    this.onMessage(name, (client, rawPayload, context) => {
+    this.onMessage(name, async (client, rawPayload, context) => {
       // Present only when the client is awaiting a reply; see DispatchContext
       // vs SEND_CONTEXT in @colyseus/core.
       const awaitingReply = context?.id !== undefined;
@@ -163,7 +171,9 @@ export class TableRoom extends Room<{ state: RoomState }> {
       if (!playerId) return fail(new ServerError(403, "Player is not joined."));
 
       try {
-        return run({ playerId, now }, parsed.data);
+        const result = await run({ playerId, now }, parsed.data);
+        if (countsAsActivity(name)) this.recordActivity(now);
+        return result;
       } catch (error) {
         if (error instanceof DomainCommandError) {
           return fail(new ServerError(rejectionStatus, error.message));
@@ -178,15 +188,17 @@ export class TableRoom extends Room<{ state: RoomState }> {
     if (options.requireHttpCreation && !options.creationRegistry?.consume(options.creationToken, options.setId)) {
       throw new ServerError(403, "Rooms must be created through the authenticated HTTP API.");
     }
+    if (options.creationToken) options.usageRegistry?.transfer(options.creationToken, this.roomId);
     this.setState(new RoomState());
     this.setId = options.setId;
     this.state.setId = options.setId ?? "";
-    this.cardLibrary = options.cardLibrary;
-    this.usageRegistry = options.usageRegistry;
+    this.deckLookup = options.deckLookup;
     this.displayNameFor = options.displayNameFor ?? (() => undefined);
-    // A room with no set can hold no cards; only tests create one.
+    // Binding acquires the usage lock before the first await, closing the
+    // archive/create race. Rooms without a set only exist in legacy unit tests.
     if (options.setId && options.cardLibrary) {
-      this.cardDefinitionIds = options.cardLibrary.activeCardIds(options.setId);
+      this.libraryBinding = new RoomLibraryBinding(options.setId, options.cardLibrary, options.usageRegistry, this.roomId);
+      this.cardDefinitionIds = this.libraryBinding.cardIds;
     }
     this.lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
     this.maxClients = options.maxClients ?? DEFAULT_MAX_CLIENTS_PER_ROOM;
@@ -197,18 +209,28 @@ export class TableRoom extends Room<{ state: RoomState }> {
       name: options.name ?? "Table",
       description: options.description ?? "",
       setId: options.setId ?? "",
-      setName: options.setName ?? "",
+      setName: this.libraryBinding?.set.name ?? options.setName ?? "",
     });
     await this.setPrivate(false);
-    if (this.setId) this.usageRegistry?.acquire(this.setId, this.roomId);
-    this.cardLibrary?.on("changed", this.onLibraryChanged);
+    this.libraryBinding?.onChanged(this.onLibraryChanged);
     this.rateLimiter = new CommandRateLimiter(
       options.commandRateLimit ?? DEFAULT_COMMAND_RATE_LIMIT,
     );
+    if (options.idleTimeoutMs !== undefined) {
+      this.idleTimeout = new RoomIdleTimeout({ timeoutMs: options.idleTimeoutMs }, Date.now());
+    }
 
     this.command(ROOM_COMMANDS.SESSION, z.unknown(), ({ playerId }): SessionResult => ({
       playerId,
     }));
+    this.command(ROOM_COMMANDS.UPDATE_ROOM_METADATA, UpdateRoomMetadataPayloadSchema, async (_context, payload) => {
+      await this.setMetadata({ ...this.metadata, ...payload });
+      return { updated: true as const };
+    });
+    this.command(ROOM_COMMANDS.KEEP_OPEN, z.undefined().or(z.object({}).passthrough()), () => {
+      this.recordActivity(Date.now());
+      return { keptOpen: true as const };
+    });
     this.command(
       TABLE_COMMANDS.SPAWN_CARD,
       SpawnCardPayloadSchema,
@@ -218,7 +240,12 @@ export class TableRoom extends Room<{ state: RoomState }> {
     this.command(
       TABLE_COMMANDS.SPAWN_DECK,
       SpawnDeckPayloadSchema,
-      (_context, payload) => spawnDeck(this.state, this.cardDefinitionIds, payload),
+      (_context, payload) => {
+        const expanded = payload.source === "deck"
+          ? this.deckEntries(payload.deckId)
+          : payload.entries;
+        return spawnDeck(this.state, this.cardDefinitionIds, { ...payload, source: "entries", entries: expanded });
+      },
       400,
     );
     this.command(TABLE_COMMANDS.CLAIM_OBJECT, ClaimObjectPayloadSchema, ({ playerId, now }, payload) => {
@@ -287,6 +314,7 @@ export class TableRoom extends Room<{ state: RoomState }> {
       () => releaseExpiredLocks(this.state, Date.now()),
       Math.min(this.lockTimeoutMs, 250),
     );
+    this.clock.setInterval(() => this.pollIdleTimeout(), 1_000);
     console.log(`TableRoom created: ${this.roomId}`);
   }
 
@@ -297,8 +325,7 @@ export class TableRoom extends Room<{ state: RoomState }> {
   }
 
   onDispose(): void {
-    this.cardLibrary?.off("changed", this.onLibraryChanged);
-    this.usageRegistry?.release(this.roomId);
+    this.libraryBinding?.dispose(this.onLibraryChanged);
   }
 
   onAuth(_client: Client, options: unknown, context: AuthContext): CurrentUser {
@@ -363,5 +390,28 @@ export class TableRoom extends Room<{ state: RoomState }> {
     this.state.players.delete(playerId);
     migrateHostIfNeeded(this.state, playerId);
     console.log(`${playerId} left ${this.roomId}`);
+  }
+
+  private deckEntries(deckId: string) {
+    const deck = this.deckLookup?.getDeck(deckId);
+    if (!deck || deck.setId !== this.setId) throw new DomainCommandError("Deck is not in this room's set.");
+    return deck.entries;
+  }
+
+  private recordActivity(now: number): void {
+    if (this.idleTimeout?.recordActivity(now)) this.broadcast(ROOM_EVENTS.ROOM_IDLE_RESUMED, {});
+  }
+
+  private pollIdleTimeout(): void {
+    if (!this.idleTimeout || this.idleExpired) return;
+    const result = this.idleTimeout.poll(Date.now());
+    if (result.kind === "warn") {
+      const event: RoomIdleWarningEvent = { endsAt: result.endsAt };
+      this.broadcast(ROOM_EVENTS.ROOM_IDLE_WARNING, event);
+    }
+    if (result.kind === "expire") {
+      this.idleExpired = true;
+      void this.endRoom("the server");
+    }
   }
 }

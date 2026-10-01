@@ -7,6 +7,15 @@ export const DATA_DIR = path.resolve(
 export const DATABASE_FILE = path.join(DATA_DIR, "workspace.db");
 export const IMAGES_DIR = path.join(DATA_DIR, "images");
 
+export function parseIdleTimeoutMinutes(raw = process.env.ROOM_IDLE_TIMEOUT_MINUTES): number {
+  if (raw === undefined || raw.trim() === "") return 120;
+  const minutes = Number(raw);
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    throw new Error("ROOM_IDLE_TIMEOUT_MINUTES must be a positive number.");
+  }
+  return minutes;
+}
+
 export function requireAuthPepper(): string {
   const pepper = process.env.AUTH_PEPPER;
   if (!pepper) throw new Error("AUTH_PEPPER is required and must be a strong server secret.");
