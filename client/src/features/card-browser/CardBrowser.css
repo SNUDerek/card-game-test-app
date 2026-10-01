@@ -81,6 +81,8 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+.card-browser-decks { float: right; margin-top: -2.8rem; padding: .4rem .6rem; border: 1px solid rgba(255,255,255,.2); border-radius: 6px; color: white; background: transparent; cursor: pointer; }
+.deck-panel { display: grid; gap: .6rem; }.deck-panel h3 { margin: .4rem 0 0; font-size: .9rem; }.deck-panel label { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }.deck-panel input { width: 6rem; padding: .35rem; }.deck-panel button { padding: .5rem; border: 0; border-radius: 6px; background: #2563eb; color: white; cursor: pointer; }
 
 .card-browser-controls {
   display: flex;
