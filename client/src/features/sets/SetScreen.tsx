@@ -1,12 +1,24 @@
-import { Link } from "wouter";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "wouter";
+import { CardSetSchema, type CardDefinition, type CardSet } from "@card-table/shared";
+import { z } from "zod";
+import { ApiConflictError, apiRequest } from "../../api/client";
+import { CardEditor } from "./cards/CardEditor";
+import "./workspace.css";
+
+const SetResponseSchema = z.object({ set: CardSetSchema });
+const CardsResponseSchema = z.object({ cards: z.array(z.object({ id: z.string(), setId: z.string(), name: z.string(), type: z.string(), body: z.string(), imageId: z.string(), imageUrl: z.string(), position: z.number(), revision: z.number(), archived: z.boolean(), updatedAt: z.number(), metadata: z.record(z.string(), z.unknown()).optional() })) });
 
 export default function SetScreen({ params }: { params: { id: string } }) {
-  return (
-    <main className="workspace-placeholder">
-      <h1>Card set</h1>
-      <p>Cards and decks for set <code>{params.id}</code> will appear here.</p>
-      <nav aria-label="Set sections"><span>Cards</span> · <span>Decks</span></nav>
-      <Link href="/sets">Back to sets</Link>
-    </main>
-  );
+  const [, navigate] = useLocation(); const [set, setSet] = useState<CardSet | null>(null); const [cards, setCards] = useState<CardDefinition[]>([]);
+  const [query, setQuery] = useState(""); const [type, setType] = useState(""); const [editing, setEditing] = useState<CardDefinition | null | undefined>(undefined);
+  const [nameDraft, setNameDraft] = useState(""); const [descriptionDraft, setDescriptionDraft] = useState(""); const [error, setError] = useState<string | null>(null); const [inUse, setInUse] = useState(false);
+  async function load() { try { const [setBody, cardsBody] = await Promise.all([apiRequest(`/api/sets/${params.id}`, SetResponseSchema), apiRequest(`/api/sets/${params.id}/cards`, CardsResponseSchema)]); setSet(setBody.set); setNameDraft(setBody.set.name); setDescriptionDraft(setBody.set.description); setCards(cardsBody.cards); setError(null); } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not load set."); } }
+  useEffect(() => { void load(); }, [params.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const types = useMemo(() => [...new Set(cards.map((card) => card.type))].sort(), [cards]); const filtered = cards.filter((card) => (!type || card.type === type) && `${card.name} ${card.body}`.toLowerCase().includes(query.toLowerCase()));
+  async function saveSet() { if (!set) return; try { const body = await apiRequest(`/api/sets/${set.id}`, SetResponseSchema, { method: "PATCH", body: JSON.stringify({ name: nameDraft, description: descriptionDraft, revision: set.revision }) }); setSet(body.set); setError(null); } catch (cause) { setError(cause instanceof ApiConflictError ? "This set changed elsewhere. Your draft is still here; reload before saving again." : cause instanceof Error ? cause.message : "Could not save set."); } }
+  async function fork() { const name = prompt("Name for the fork:", set ? `${set.name} copy` : ""); if (!name?.trim() || !set) return; try { const body = await apiRequest(`/api/sets/${set.id}/fork`, z.object({ set: z.object({ id: z.string() }) }), { method: "POST", body: JSON.stringify({ name }) }); navigate(`/sets/${body.set.id}`); } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not fork set."); } }
+  async function archive() { if (!set || !confirm(`Archive ${set.name}?`)) return; try { await apiRequest(`/api/sets/${set.id}`, z.undefined(), { method: "DELETE" }); navigate("/sets"); } catch (cause) { setInUse(cause instanceof ApiConflictError); setError(cause instanceof Error ? cause.message : "Could not archive set."); } }
+  if (!set) return <main className="workspace-page"><Link href="/sets">← Sets</Link>{error ? <p className="workspace-error">{error}</p> : <p>Loading set…</p>}</main>;
+  return <main className="workspace-page"><header className="workspace-header"><div><Link href="/sets">← Card sets</Link><h1>{set.name}</h1></div><div className="workspace-actions"><button onClick={() => void fork()}>Fork</button><a href={`/api/sets/${set.id}/export`}>Export</a><button className="danger" onClick={() => void archive()}>Archive</button></div></header><section className="set-details"><label>Name <input value={nameDraft} maxLength={100} onChange={(e) => setNameDraft(e.target.value)} /></label><label>Description <input value={descriptionDraft} maxLength={2000} onChange={(e) => setDescriptionDraft(e.target.value)} /></label><button onClick={() => void saveSet()}>Save details</button></section>{error && <p className="workspace-error" role="alert">{error}</p>}{inUse && <aside className="workspace-notice">This set is in use by an open room. End that room from the room browser, or <button onClick={() => void fork()}>fork this set</button> to continue editing safely.</aside>}<nav className="set-tabs" aria-label="Set sections"><button className="active">Cards</button><span title="Deck editing arrives with Wave 2 H">Decks</span></nav><div className="card-controls"><input aria-label="Search cards" placeholder="Search cards" value={query} onChange={(e) => setQuery(e.target.value)} /><select aria-label="Filter cards by type" value={type} onChange={(e) => setType(e.target.value)}><option value="">All types</option>{types.map((entry) => <option key={entry}>{entry}</option>)}</select><button onClick={() => setEditing(null)}>New card</button></div><section className="card-grid" aria-label="Cards">{filtered.map((card) => <button className="card-tile" key={card.id} onClick={() => setEditing(card)}><img src={card.imageUrl} alt="" /><strong>{card.name}</strong><small>{card.type}</small></button>)}{filtered.length === 0 && <p className="workspace-muted">No matching cards.</p>}</section>{editing !== undefined && <CardEditor setId={set.id} card={editing} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); void load(); }} />}</main>;
 }
