@@ -8,6 +8,8 @@ import {
   type MoveCardResult,
   type SpawnCardPayload,
   type SpawnCardResult,
+  type SpawnDeckPayload,
+  type SpawnDeckResult,
   type CardIdPayload,
   type FlipCardResult,
   type SetCardOrientationResult,
@@ -31,6 +33,10 @@ import type { Room } from "@colyseus/sdk";
 
 export function spawnCard(room: Room, payload: SpawnCardPayload): Promise<SpawnCardResult> {
   return room.request(TABLE_COMMANDS.SPAWN_CARD, payload);
+}
+
+export function spawnDeck(room: Room, payload: SpawnDeckPayload): Promise<SpawnDeckResult> {
+  return room.request(TABLE_COMMANDS.SPAWN_DECK, payload);
 }
 
 export function moveCard(

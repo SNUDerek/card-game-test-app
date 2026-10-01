@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+/** Card artwork is square, with a side length in this range (pixels). */
+export const CARD_IMAGE_MIN_SIZE = 32;
+export const CARD_IMAGE_MAX_SIZE = 512;
+
 /**
  * Minimum fields required in a card's source JSON file. Unknown fields are
  * preserved (not stripped) so the loader can carry them into `metadata`.
