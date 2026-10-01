@@ -35,6 +35,26 @@ export const ROOM_COMMANDS = {
   SESSION: "SESSION",
 } as const;
 
+/** Messages the server broadcasts to every client in a room. */
+export const ROOM_EVENTS = {
+  /** A card or the set bound to this room was edited in the library. */
+  CATALOG_CHANGED: "CATALOG_CHANGED",
+  /** Someone ended the room; members are about to be disconnected. */
+  ROOM_ENDED: "ROOM_ENDED",
+} as const;
+
+export interface CatalogChangedEvent {
+  setId: string;
+  /** Cards created, edited, archived, or restored. Empty for set-only edits. */
+  changedCardIds: string[];
+  /** Display name of whoever made the change, when known. */
+  editorName: string | null;
+}
+
+export interface RoomEndedEvent {
+  message: string;
+}
+
 export interface SessionResult {
   playerId: PlayerId;
 }

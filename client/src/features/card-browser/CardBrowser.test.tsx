@@ -2,24 +2,11 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CardBrowser } from "./CardBrowser";
 import { CardCatalogProvider } from "./CardCatalogContext";
+import { cardDefinition } from "../../test/card-definitions";
 
 const cards = [
-  {
-    id: "a-spell",
-    name: "Zephyr",
-    type: "spell",
-    body: "Move quickly.",
-    imageUrl: "/cards/zephyr.png",
-    sourceName: "zephyr",
-  },
-  {
-    id: "z-creature",
-    name: "Albatross",
-    type: "creature",
-    body: "Fly above the table.",
-    imageUrl: "/cards/albatross.png",
-    sourceName: "albatross",
-  },
+  cardDefinition({ id: "card-zephyr", name: "Zephyr", type: "spell", position: 0 }),
+  cardDefinition({ id: "card-albatross", name: "Albatross", type: "creature", position: 1 }),
 ];
 
 afterEach(() => vi.restoreAllMocks());
@@ -34,7 +21,7 @@ function mockCatalogResponse(body: unknown, ok = true) {
 
 async function openBrowser() {
   render(
-    <CardCatalogProvider>
+    <CardCatalogProvider setId="set-1" subscribeToChanges={() => () => undefined}>
       <CardBrowser />
     </CardCatalogProvider>,
   );
@@ -43,28 +30,29 @@ async function openBrowser() {
 }
 
 describe("CardBrowser", () => {
-  it("filters and sorts catalog cards", async () => {
+  it("lists cards in set order, sorts by name, and filters by name or type", async () => {
     mockCatalogResponse({ cards });
     await openBrowser();
 
     const grid = screen.getByText("Albatross").closest<HTMLElement>(".card-browser-grid");
     expect(grid).not.toBeNull();
-    expect(within(grid!).getAllByRole("article").map((item) => item.textContent)).toEqual([
-      expect.stringContaining("Albatross"),
+    const names = () => within(grid!).getAllByRole("article").map((item) => item.textContent);
+    expect(names()).toEqual([
       expect.stringContaining("Zephyr"),
+      expect.stringContaining("Albatross"),
     ]);
 
-    fireEvent.change(screen.getByLabelText("Sort cards"), { target: { value: "id" } });
-    expect(within(grid!).getAllByRole("article").map((item) => item.textContent)).toEqual([
-      expect.stringContaining("Zephyr"),
+    fireEvent.change(screen.getByLabelText("Sort cards"), { target: { value: "name" } });
+    expect(names()).toEqual([
       expect.stringContaining("Albatross"),
+      expect.stringContaining("Zephyr"),
     ]);
 
     fireEvent.change(screen.getByLabelText("Filter cards"), {
-      target: { value: "a-spell" },
+      target: { value: "creat" },
     });
-    expect(screen.getByText("Zephyr")).toBeInTheDocument();
-    expect(screen.queryByText("Albatross")).not.toBeInTheDocument();
+    expect(screen.getByText("Albatross")).toBeInTheDocument();
+    expect(screen.queryByText("Zephyr")).not.toBeInTheDocument();
   });
 
   it("makes only the artwork draggable, and sends the definition id", async () => {
@@ -80,7 +68,7 @@ describe("CardBrowser", () => {
     fireEvent.dragStart(image, { dataTransfer });
     expect(dataTransfer.setData).toHaveBeenCalledWith(
       "application/x-card-definition-id",
-      "a-spell",
+      "card-zephyr",
     );
   });
 
