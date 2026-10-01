@@ -105,6 +105,16 @@ registration is disabled, run:
 AUTH_PEPPER='the-same-secret' npm run user:create -w server -- alice "Alice"
 ```
 
+To copy a folder of card files into the workspace library as a new set, run
+the importer. Card images are stored by content hash under `DATA_DIR/images`.
+The table does not read library sets yet; it still loads `cards/` at startup.
+
+```bash
+npm run cards:import -w server -- ./cards "Skirmish v1"
+# in Docker:
+docker compose exec server node server/dist/library/import-cards-cli.js /app/cards "Skirmish v1"
+```
+
 To serve the table on a public hostname with HTTPS, see
 [docs/hosting.md](docs/hosting.md). It covers the recommended Cloudflare Tunnel
 setup and how to back up the workspace data.
