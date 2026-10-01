@@ -23,7 +23,7 @@
 .confirm-body { color: #cbd5e1; font-size: 14px; }
 .confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
-.confirm-actions button {
+.confirm-dialog .confirm-actions button {
   padding: 8px 12px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
@@ -32,5 +32,8 @@
   cursor: pointer;
 }
 
-.confirm-actions .is-danger { background: #b91c1c; border-color: #b91c1c; }
-.confirm-actions .is-primary { background: #2563eb; border-color: #2563eb; }
+.confirm-dialog .confirm-actions .is-danger { background: #b91c1c; border-color: #b91c1c; }
+.confirm-dialog .confirm-actions .is-primary { background: #2563eb; border-color: #2563eb; }
+
+.confirm-dialog .confirm-actions button:disabled { opacity: 0.5; cursor: default; }
+.confirm-body label { display: block; color: #e2e8f0; }
