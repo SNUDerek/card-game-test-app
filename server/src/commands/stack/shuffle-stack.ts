@@ -2,13 +2,8 @@ import type { PlayerId } from "@card-table/shared";
 import type { RoomState } from "../../rooms/state/RoomState.js";
 import { DomainCommandError } from "../errors.js";
 import { rejectForeignLock } from "../player/object-locks.js";
+import { defaultRandomInt, shuffled, type RandomInt } from "../random.js";
 import { getStack } from "./stack-helpers.js";
-
-/** Returns a uniformly random integer in [0, exclusiveMax). */
-export type RandomInt = (exclusiveMax: number) => number;
-
-const defaultRandomInt: RandomInt = (exclusiveMax) =>
-  Math.floor(Math.random() * exclusiveMax);
 
 /**
  * Randomizes a stack's card order.
@@ -55,13 +50,8 @@ export function shuffleStack(
     );
   }
 
-  // Fisher-Yates over a plain copy: the schema array is only written once the
+  // Shuffled as a plain copy: the schema array is only written once the
   // permutation is known, so a rejection above leaves the stack untouched.
-  const shuffled = [...stack.cardIds];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = randomInt(i + 1);
-    [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
-  }
-
-  for (const [index, cardId] of shuffled.entries()) stack.cardIds[index] = cardId;
+  const order = shuffled([...stack.cardIds], randomInt);
+  for (const [index, cardId] of order.entries()) stack.cardIds[index] = cardId;
 }

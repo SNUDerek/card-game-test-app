@@ -5,6 +5,8 @@ import type {
   MoveCardPayload,
   MoveStackPayload,
   SpawnCardPayload,
+  SpawnDeckPayload,
+  SpawnDeckResult,
   StackCardPayload,
   TableObjectRef,
 } from "@card-table/shared";
@@ -21,6 +23,7 @@ import {
   setHover as sendSetHover,
   shuffleStack as sendShuffleStack,
   spawnCard as sendSpawnCard,
+  spawnDeck as sendSpawnDeck,
   stackCard as sendStackCard,
   tapCard as sendTapCard,
   untapCard as sendUntapCard,
@@ -29,6 +32,7 @@ import type { TableRoom } from "./room";
 
 export interface TableCommands {
   spawnCard(payload: SpawnCardPayload): Promise<void>;
+  spawnDeck(payload: SpawnDeckPayload): Promise<SpawnDeckResult>;
   claimObject(object: TableObjectRef): Promise<ClaimObjectResult>;
   releaseObject(object: TableObjectRef): Promise<void>;
   moveCard(payload: MoveCardPayload, confirmed?: boolean): Promise<void>;
@@ -68,6 +72,7 @@ export function useTableCommands(roomRef: RefObject<TableRoom | null>): TableCom
   return useMemo<TableCommands>(
     () => ({
       spawnCard: (payload) => withRoom(async (room) => void (await sendSpawnCard(room, payload))),
+      spawnDeck: (payload) => withRoom((room) => sendSpawnDeck(room, payload)),
       claimObject: (object) => withRoom((room) => sendClaimObject(room, { object })),
       releaseObject: (object) =>
         withRoom(async (room) => void (await sendReleaseObject(room, { object }))),

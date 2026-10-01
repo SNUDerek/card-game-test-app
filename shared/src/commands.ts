@@ -1,8 +1,11 @@
 import { z } from "zod";
 import type { PlayerId } from "./ids.js";
+import { CardFaceSchema } from "./room.js";
+import { DeckEntriesSchema } from "./decks.js";
 
 export const TABLE_COMMANDS = {
   SPAWN_CARD: "SPAWN_CARD",
+  SPAWN_DECK: "SPAWN_DECK",
   CLAIM_OBJECT: "CLAIM_OBJECT",
   RELEASE_OBJECT: "RELEASE_OBJECT",
   MOVE_CARD: "MOVE_CARD",
@@ -50,6 +53,27 @@ export type SpawnCardPayload = z.infer<typeof SpawnCardPayloadSchema>;
 export interface SpawnCardResult {
   cardId: string;
 }
+
+/**
+ * Deals a whole deck as one stack. A discriminated union so a saved deck
+ * (`source: "deck"`, by id) can join the inline entries a generated but
+ * unsaved deck sends.
+ */
+export const SpawnDeckPayloadSchema = z.discriminatedUnion("source", [
+  PositionSchema.extend({
+    source: z.literal("entries"),
+    entries: DeckEntriesSchema,
+    shuffle: z.boolean(),
+    face: CardFaceSchema,
+  }),
+]);
+
+export type SpawnDeckPayload = z.infer<typeof SpawnDeckPayloadSchema>;
+
+/** A one-card deck is dealt as a standalone card, so it has no stack. */
+export type SpawnDeckResult =
+  | { kind: "stack"; stackId: string; cardCount: number }
+  | { kind: "card"; cardId: string };
 
 export const TableObjectRefSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("card"), id: z.string().min(1) }),

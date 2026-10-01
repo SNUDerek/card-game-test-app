@@ -116,6 +116,39 @@ describe("TableRoom connection lifecycle", () => {
     expect(room.state.cards.size).toBe(0);
   });
 
+  it("deals a deck as one synchronized stack and rejects bad decks whole", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const deal = { source: "entries", x: 50, y: 60, shuffle: true, face: "back" };
+
+    await expect(
+      alice.request(TABLE_COMMANDS.SPAWN_DECK, { ...deal, entries: [] }),
+    ).rejects.toThrow("Invalid SPAWN_DECK payload");
+    await expect(
+      alice.request(TABLE_COMMANDS.SPAWN_DECK, {
+        ...deal,
+        entries: [
+          { cardId: "spell-1", copies: 2 },
+          { cardId: "missing", copies: 1 },
+        ],
+      }),
+    ).rejects.toThrow("Unknown card definition");
+    expect(room.state.cards.size).toBe(0);
+
+    const result = await alice.request(TABLE_COMMANDS.SPAWN_DECK, {
+      ...deal,
+      entries: [{ cardId: "spell-1", copies: 4 }],
+    });
+    await room.waitForNextPatch();
+
+    expect(result).toEqual({ kind: "stack", stackId: expect.any(String), cardCount: 4 });
+    const stack = room.state.stacks.get(result.stackId);
+    expect(stack?.toJSON()).toMatchObject({ x: 50, y: 60 });
+    expect(stack?.cardIds.length).toBe(4);
+    expect([...room.state.cards.values()].every((card) => card.face === "back")).toBe(true);
+    expect(alice.state.toJSON()).toEqual(room.state.toJSON());
+  });
+
   it("synchronizes claim, rejection, idempotent refresh, and release", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
     const alice = await colyseus.connectTo(room, { displayName: "Alice" });

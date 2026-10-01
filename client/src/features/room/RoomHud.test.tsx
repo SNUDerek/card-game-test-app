@@ -16,6 +16,16 @@ vi.mock("../../multiplayer/MultiplayerContext", () => ({
   useMultiplayer: () => multiplayer,
 }));
 
+const boardImage = {
+  download: vi.fn().mockResolvedValue(undefined),
+  isExporting: false,
+  error: null as string | null,
+};
+
+vi.mock("../../tabletop/board-export/useBoardImageDownload", () => ({
+  useBoardImageDownload: () => boardImage,
+}));
+
 const alice: Player = { id: "p-alice", userId: "u-alice", displayName: "Alice", connected: true, joinOrder: 0 };
 const bob: Player = { id: "p-bob", userId: "u-bob", displayName: "Bob", connected: true, joinOrder: 1 };
 
@@ -25,6 +35,8 @@ beforeEach(() => {
   multiplayer.players = [alice, bob];
   multiplayer.hostPlayerId = "p-alice";
   multiplayer.selfPlayerId = "p-bob";
+  boardImage.isExporting = false;
+  boardImage.error = null;
 });
 
 function playerRow(name: string) {
@@ -75,5 +87,20 @@ describe("RoomHud", () => {
     multiplayer.roomId = null;
     const { container } = render(<RoomHud />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("downloads a board image and reports progress and failure", () => {
+    const { rerender } = render(<RoomHud />);
+    fireEvent.click(screen.getByRole("button", { name: "Download board image" }));
+    expect(boardImage.download).toHaveBeenCalled();
+
+    boardImage.isExporting = true;
+    rerender(<RoomHud />);
+    expect(screen.getByRole("button", { name: "Preparing image…" })).toBeDisabled();
+
+    boardImage.isExporting = false;
+    boardImage.error = "2 card images could not be loaded.";
+    rerender(<RoomHud />);
+    expect(screen.getByRole("alert")).toHaveTextContent("2 card images could not be loaded.");
   });
 });

@@ -7,6 +7,7 @@ import {
   MoveCardPayloadSchema,
   CardIdPayloadSchema,
   SpawnCardPayloadSchema,
+  SpawnDeckPayloadSchema,
   StackCardPayloadSchema,
   MoveStackPayloadSchema,
   DrawCardPayloadSchema,
@@ -21,6 +22,7 @@ import {
 } from "@card-table/shared";
 import { PlayerState, RoomState } from "./state/RoomState.js";
 import { spawnCard } from "../commands/card/spawn-card.js";
+import { spawnDeck } from "../commands/deck/spawn-deck.js";
 import { DomainCommandError } from "../commands/errors.js";
 import {
   claimObject,
@@ -156,6 +158,12 @@ export class TableRoom extends Room<{ state: RoomState }> {
       TABLE_COMMANDS.SPAWN_CARD,
       SpawnCardPayloadSchema,
       (_context, payload) => ({ cardId: spawnCard(this.state, this.cardDefinitionIds, payload).id }),
+      400,
+    );
+    this.command(
+      TABLE_COMMANDS.SPAWN_DECK,
+      SpawnDeckPayloadSchema,
+      (_context, payload) => spawnDeck(this.state, this.cardDefinitionIds, payload),
       400,
     );
     this.command(TABLE_COMMANDS.CLAIM_OBJECT, ClaimObjectPayloadSchema, ({ playerId, now }, payload) => {

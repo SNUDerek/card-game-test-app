@@ -105,6 +105,9 @@ registration is disabled, run:
 AUTH_PEPPER='the-same-secret' npm run user:create -w server -- alice "Alice"
 ```
 
+To serve the table on a public hostname with HTTPS, see
+[docs/hosting.md](docs/hosting.md). It covers the recommended Cloudflare Tunnel
+setup and how to back up the workspace data.
 The local `cards/` directory is bind-mounted as a read-only volume into the server container. This means you can add, remove, or modify card assets (`.jpg`/`.png` and `.json`) locally, and the server will recognize them without requiring a container rebuild (a backend restart is required to load new cards).
 
 ## Adding or Modifying Cards

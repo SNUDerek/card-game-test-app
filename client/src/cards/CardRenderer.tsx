@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { createContext, useContext, useMemo } from "react";
 import { Group, Rect, Text, Image as KonvaImage } from "react-konva";
 import type { CardDefinition, CardFace } from "@card-table/shared";
 import { useImage } from "../hooks/useImage";
@@ -35,8 +35,19 @@ const BODY_Y = ART_BOTTOM + 55;
 export const BODY_WIDTH = CARD_WIDTH - CARD_PADDING * 2;
 export const BODY_HEIGHT = CARD_HEIGHT - CARD_PADDING - BODY_Y;
 
+/**
+ * Artwork already loaded, by image URL. An offscreen render (the board image
+ * export) provides this so cards draw their art in the first frame instead of
+ * waiting on per-card image loads. Interactive tables leave it empty.
+ */
+export const PreloadedImagesContext = createContext<ReadonlyMap<string, HTMLImageElement>>(
+  new Map(),
+);
+
 export function CardRenderer({ definition, face }: CardRendererProps) {
-  const [image] = useImage(definition.imageUrl);
+  const preloaded = useContext(PreloadedImagesContext).get(definition.imageUrl);
+  const [loaded] = useImage(preloaded ? undefined : definition.imageUrl);
+  const image = preloaded ?? loaded;
   const bodyFontSize = useMemo(
     () => fitBodyFontSize(definition.body, BODY_WIDTH, BODY_HEIGHT),
     [definition.body],

@@ -2,6 +2,8 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { imageSizeFromFile } from "image-size/fromFile";
 import {
+  CARD_IMAGE_MAX_SIZE,
+  CARD_IMAGE_MIN_SIZE,
   CardDefinitionSchema,
   CardDefinitionSourceSchema,
   type CardDefinition,
@@ -9,8 +11,6 @@ import {
 } from "@card-table/shared";
 
 const SUPPORTED_IMAGE_EXTENSIONS = new Set([".jpg", ".png"]);
-const MIN_IMAGE_DIMENSION = 32;
-const MAX_IMAGE_DIMENSION = 512;
 
 export type CardCatalog = ReadonlyMap<CardDefinitionId, CardDefinition>;
 
@@ -138,10 +138,10 @@ export async function loadCardCatalog(cardsDir: string): Promise<CardCatalog> {
       issues.push(`non-square image dimensions for ${imageFile}: ${width}x${height}`);
       continue;
     }
-    if (width < MIN_IMAGE_DIMENSION || width > MAX_IMAGE_DIMENSION) {
+    if (width < CARD_IMAGE_MIN_SIZE || width > CARD_IMAGE_MAX_SIZE) {
       issues.push(
         `out-of-range image dimensions for ${imageFile}: ${width}x${height} ` +
-          `(must be ${MIN_IMAGE_DIMENSION}-${MAX_IMAGE_DIMENSION}px)`,
+          `(must be ${CARD_IMAGE_MIN_SIZE}-${CARD_IMAGE_MAX_SIZE}px)`,
       );
       continue;
     }

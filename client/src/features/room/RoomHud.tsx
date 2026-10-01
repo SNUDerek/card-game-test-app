@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMultiplayer } from "../../multiplayer/MultiplayerContext";
 import { roomJoinUrl } from "../../multiplayer/session";
 import { resolveJoinUrlBase } from "../../multiplayer/endpoint";
+import { useBoardImageDownload } from "../../tabletop/board-export/useBoardImageDownload";
 import { playerColor } from "./player-colors";
 import "./RoomHud.css";
 
@@ -13,6 +14,7 @@ import "./RoomHud.css";
 export function RoomHud() {
   const { roomId, players, hostPlayerId, selfPlayerId, leaveRoom } = useMultiplayer();
   const [copied, setCopied] = useState(false);
+  const boardImage = useBoardImageDownload();
 
   if (!roomId) return null;
 
@@ -55,6 +57,20 @@ export function RoomHud() {
           </li>
         ))}
       </ul>
+
+      <button
+        className="room-hud-action"
+        type="button"
+        disabled={boardImage.isExporting}
+        onClick={() => void boardImage.download()}
+      >
+        {boardImage.isExporting ? "Preparing image…" : "Download board image"}
+      </button>
+      {boardImage.error && (
+        <p className="room-hud-error" role="alert">
+          {boardImage.error}
+        </p>
+      )}
 
       <button className="room-hud-leave" type="button" onClick={() => void leaveRoom()}>
         Leave room
