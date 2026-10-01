@@ -33,8 +33,6 @@ import {
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 
 export interface CreateRoomRequest {
-  displayName: string;
-  password?: string;
 }
 
 export interface JoinRoomRequest extends CreateRoomRequest {
@@ -52,7 +50,7 @@ interface MultiplayerValue extends TableCommands {
   cards: CardInstance[];
   stacks: CardStack[];
   connectionError: string | null;
-  createRoom(request: CreateRoomRequest): Promise<void>;
+  createRoom(): Promise<void>;
   joinRoom(request: JoinRoomRequest): Promise<void>;
   leaveRoom(): Promise<void>;
 }
@@ -60,11 +58,7 @@ interface MultiplayerValue extends TableCommands {
 const MultiplayerContext = createContext<MultiplayerValue | null>(null);
 
 function serverEndpoint(): string {
-  return resolveServerEndpoint(
-    window.location,
-    window.__CARD_TABLE__,
-    import.meta.env.VITE_COLYSEUS_URL,
-  );
+  return resolveServerEndpoint(window.location);
 }
 
 export function MultiplayerProvider({ children }: { children: ReactNode }) {
@@ -138,16 +132,13 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
   );
 
   const createRoom = useCallback(
-    ({ displayName, password }: CreateRoomRequest) =>
-      connect(() => client.create<ClientRoomState>("table", { displayName, password })),
+    () => connect(() => client.create<ClientRoomState>("table")),
     [client, connect],
   );
 
   const joinRoom = useCallback(
-    ({ roomId: targetRoomId, displayName, password }: JoinRoomRequest) =>
-      connect(() =>
-        client.joinById<ClientRoomState>(targetRoomId, { displayName, password }),
-      ),
+    ({ roomId: targetRoomId }: JoinRoomRequest) =>
+      connect(() => client.joinById<ClientRoomState>(targetRoomId)),
     [client, connect],
   );
 

@@ -3,15 +3,20 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
-    # Listens on SERVER_PORT inside the container as well as outside it, so the
-    # port you configure is the port in every log line and URL.
-    ports:
-      - "${SERVER_PORT:-2567}:${SERVER_PORT:-2567}"
+    # Only nginx reaches this service. Browsers use the client service's origin.
+    expose:
+      - "${SERVER_PORT:-2567}"
     environment:
       PORT: ${SERVER_PORT:-2567}
       CARDS_DIR: /app/cards
+      DATA_DIR: /app/data
+      AUTH_PEPPER: ${AUTH_PEPPER:?Set AUTH_PEPPER in .env}
+      SIGNUP_PASSCODE: ${SIGNUP_PASSCODE:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
     volumes:
       - ./cards:/app/cards:ro
+      - workspace-data:/app/data
     restart: unless-stopped
 
   client:
@@ -21,10 +26,6 @@ services:
     ports:
       - "${CLIENT_PORT:-8080}:80"
     environment:
-      # Where browsers should reach the tabletop server. Leave empty to use this
-      # same origin, which nginx proxies to the server container -- then only
-      # CLIENT_PORT has to be reachable, on any hostname, with no rebuild.
-      PUBLIC_SERVER_URL: "${PUBLIC_SERVER_URL:-}"
       # Address shared room links should point at, port included. Leave empty to
       # use whatever address the browser loaded the page from.
       PUBLIC_CLIENT_URL: "${PUBLIC_CLIENT_URL:-}"
@@ -33,3 +34,6 @@ services:
     depends_on:
       - server
     restart: unless-stopped
+
+volumes:
+  workspace-data:

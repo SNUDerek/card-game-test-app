@@ -23,7 +23,7 @@ function stack(id: string, cardIds: string[]): CardStack {
 }
 
 function player(id: string, joinOrder: number): Player {
-  return { id, displayName: id, connected: true, joinOrder };
+  return { id, userId: `user-${id}`, displayName: id, connected: true, joinOrder };
 }
 
 /**

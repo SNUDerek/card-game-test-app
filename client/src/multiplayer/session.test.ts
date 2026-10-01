@@ -34,7 +34,6 @@ describe("room routes", () => {
 
 describe("describeConnectionError", () => {
   it.each([
-    [new Error("Incorrect room password."), "Incorrect room password."],
     [new Error('room "ABC123" not found'), "That room no longer exists."],
     [
       new Error("A display name between 1 and 50 characters is required."),

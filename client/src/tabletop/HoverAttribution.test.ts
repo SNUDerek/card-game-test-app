@@ -5,7 +5,7 @@ import { playerColor } from "../features/room/player-colors";
 import { CARD_HEIGHT, CARD_WIDTH } from "../cards/CardRenderer";
 
 function player(id: string, joinOrder: number, hoveredCardId?: string): Player {
-  return { id, displayName: id, connected: true, joinOrder, hoveredCardId };
+  return { id, userId: `user-${id}`, displayName: id, connected: true, joinOrder, hoveredCardId };
 }
 
 function card(id: string, overrides: Partial<CardInstance> = {}): CardInstance {

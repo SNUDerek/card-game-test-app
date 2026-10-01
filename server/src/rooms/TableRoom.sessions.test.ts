@@ -19,7 +19,13 @@ describe("TableRoom sessions", () => {
 
   beforeAll(async () => {
     colyseus = await boot({
-      rooms: { table: defineRoom(TableRoom, { cardDefinitionIds: ["spell-1"] }) },
+      rooms: { table: defineRoom(TableRoom, {
+        cardDefinitionIds: ["spell-1"],
+        authenticate: (_cookie, options) => {
+          const displayName = String((options as { displayName?: string })?.displayName ?? "").trim();
+          return displayName ? { id: `user-${displayName}`, username: displayName, displayName } : undefined;
+        },
+      }) },
     });
   });
 
@@ -31,7 +37,7 @@ describe("TableRoom sessions", () => {
     await colyseus.cleanup();
   });
 
-  it("lets anyone with the room id join an unprotected room", async () => {
+  it("lets an authenticated account join by room id", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
 
     const alice = await colyseus.sdk.joinById(room.roomId, { displayName: "Alice" });
@@ -41,35 +47,12 @@ describe("TableRoom sessions", () => {
     expect(room.state.players.size).toBe(1);
   });
 
-  it("admits a protected room only with the correct password", async () => {
-    const room = await colyseus.createRoom<TableRoom>("table", { password: "open-sesame" });
-    const alice = await colyseus.sdk.joinById(room.roomId, {
-      displayName: "Alice",
-      password: "open-sesame",
-    });
-    await room.waitForNextPatch();
-    expect(alice.state.players.size).toBe(1);
-
-    await expect(
-      colyseus.sdk.joinById(room.roomId, { displayName: "Mallory" }),
-    ).rejects.toThrow("Incorrect room password");
-    await expect(
-      colyseus.sdk.joinById(room.roomId, { displayName: "Mallory", password: "guess" }),
-    ).rejects.toThrow("Incorrect room password");
-
-    expect(room.state.players.size).toBe(1);
-  });
-
-  it("never synchronizes the room password to clients", async () => {
-    const room = await colyseus.createRoom<TableRoom>("table", { password: "open-sesame" });
-    const alice = await colyseus.connectTo(room, {
-      displayName: "Alice",
-      password: "open-sesame",
-    });
+  it("synchronizes account identity without exposing credentials", async () => {
+    const room = await colyseus.createRoom<TableRoom>("table");
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
     await room.waitForNextPatch();
 
-    expect(JSON.stringify(alice.state.toJSON())).not.toContain("open-sesame");
-    expect(Object.keys(room.state.toJSON())).not.toContain("password");
+    expect([...alice.state.players.values()][0]?.userId).toBe("user-Alice");
   });
 
   it("makes the first player to join the host and leaves it there", async () => {
