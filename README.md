@@ -100,6 +100,10 @@ PUBLIC_SERVER_URL=http://my.serverurl.com:9001
 Use `https://` when serving over TLS; the client upgrades the socket to `wss://`
 on its own.
 
+To serve the table on a public hostname with HTTPS, see
+[docs/hosting.md](docs/hosting.md). It covers the recommended Cloudflare Tunnel
+setup and how to back up the workspace data.
+
 `PUBLIC_SERVER_URL` is applied when the container starts, not when the image is
 built, so changing it only needs `docker compose up -d`. (The older
 `VITE_COLYSEUS_URL` still works for `npm run dev`, but being a Vite variable it is

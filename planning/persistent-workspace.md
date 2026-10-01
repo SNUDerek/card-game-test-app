@@ -605,6 +605,17 @@ remaining work can proceed alongside them and which must wait.
 Pure functions, client-only code, or table-domain code. Build against today's code and
 wire into the library later.
 
+**Status: built** (branch `feature/persistent-workspace-parallel`). Still to wire in later
+phases:
+
+- `SPAWN_DECK` validates against `cardDefinitionIds` until the set-scoped cache exists, and
+  has no UI yet.
+- `generateDeck()` and `buildSetExportArchive()` have no routes yet.
+- `prepareCardImage()` has no editor that calls it.
+- `RoomIdleTimeout` is not yet hooked into `TableRoom` or env config.
+- The board PNG button names files by room ID until rooms have names.
+- `.env.example` is unchanged, to avoid conflicts with the auth branch.
+
 | Work | Why it's independent | Main files touched |
 |---|---|---|
 | **Board PNG export** (§4.6) | Client-only: separate Konva render reusing `CardRenderer`, bounds fitting, HUD button. | `client/src/tabletop/`, `RoomHud.tsx` |
