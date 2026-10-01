@@ -17,9 +17,14 @@ import {
   type CatalogChangedEvent,
   type Player,
   type PlayerId,
+  type RoomEndedEvent,
   type RoomId,
+  type RoomIdleWarningEvent,
+  type UpdateRoomMetadataPayload,
 } from "@card-table/shared";
-import { requestSession } from "./commands";
+import { z } from "zod";
+import { apiRequest } from "../api/client";
+import { keepRoomOpen, requestSession, updateRoomMetadata } from "./commands";
 import { resolveServerEndpoint } from "./endpoint";
 import type { ClientRoomState, TableRoom } from "./room";
 import { useRoomSync } from "./useRoomSync";
@@ -54,6 +59,10 @@ interface MultiplayerValue extends TableCommands {
   hostPlayerId: PlayerId;
   /** The library set the joined room plays; empty when not connected. */
   setId: string;
+  roomName: string;
+  roomDescription: string;
+  /** When the idle timeout will end the room; null unless a warning is active. */
+  idleEndsAt: number | null;
   players: Player[];
   cards: CardInstance[];
   stacks: CardStack[];
@@ -61,6 +70,10 @@ interface MultiplayerValue extends TableCommands {
   createRoom(request: CreateRoomRequest): Promise<void>;
   joinRoom(request: JoinRoomRequest): Promise<void>;
   leaveRoom(): Promise<void>;
+  /** Ends a room for everyone in it; works for rooms this client has not joined. */
+  endRoom(roomId: RoomId): Promise<void>;
+  updateRoomDetails(payload: UpdateRoomMetadataPayload): Promise<void>;
+  keepOpen(): Promise<void>;
   /** Listens for library edits to the room's set. Returns an unsubscribe function. */
   subscribeCatalogChanges(listener: (event: CatalogChangedEvent) => void): () => void;
 }
@@ -83,7 +96,10 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
   const [invitedRoomId, setInvitedRoomId] = useState<RoomId | null>(initialRoomId);
   const [selfPlayerId, setSelfPlayerId] = useState<PlayerId | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const { players, cards, stacks, hostPlayerId, setId, syncRoom, resetSync } = useRoomSync();
+  const [idleEndsAt, setIdleEndsAt] = useState<number | null>(null);
+  const endedMessage = useRef<string | null>(null);
+  const { players, cards, stacks, hostPlayerId, setId, roomName, roomDescription, syncRoom, resetSync } =
+    useRoomSync();
   const catalogListeners = useRef(new Set<(event: CatalogChangedEvent) => void>());
   const commands = useTableCommands(roomRef);
 
@@ -92,6 +108,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     setStatus("disconnected");
     setRoomId(null);
     setSelfPlayerId(null);
+    setIdleEndsAt(null);
     resetSync();
   }, [resetSync]);
 
@@ -104,13 +121,25 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
         if (roomRef.current !== room) return;
         for (const listener of catalogListeners.current) listener(event);
       });
+      room.onMessage(ROOM_EVENTS.ROOM_ENDED, (event: RoomEndedEvent) => {
+        if (roomRef.current === room) endedMessage.current = event.message;
+      });
+      room.onMessage(ROOM_EVENTS.ROOM_IDLE_WARNING, (event: RoomIdleWarningEvent) => {
+        if (roomRef.current === room) setIdleEndsAt(event.endsAt);
+      });
+      room.onMessage(ROOM_EVENTS.ROOM_IDLE_RESUMED, () => {
+        if (roomRef.current === room) setIdleEndsAt(null);
+      });
       room.onLeave(() => {
         if (roomRef.current !== room) return;
+        const ended = endedMessage.current;
+        endedMessage.current = null;
         // The seat is gone for good by now: the SDK retries transient drops on
         // its own, and a reload would be refused the stale token anyway.
         clearStoredSession();
-        setConnectionError("Disconnected from the tabletop server.");
+        setConnectionError(ended ?? "Disconnected from the tabletop server.");
         resetSession();
+        navigate("/", { replace: true });
       });
 
       // PlayerIds are server-generated, so ask which player this connection is.
@@ -167,6 +196,21 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       connect(() => client.joinById<ClientRoomState>(targetRoomId)),
     [client, connect],
   );
+
+  const endRoom = useCallback(async (targetRoomId: RoomId) => {
+    await apiRequest(`/api/rooms/${encodeURIComponent(targetRoomId)}/end`, z.undefined(), { method: "POST" });
+  }, []);
+
+  const updateRoomDetails = useCallback(async (payload: UpdateRoomMetadataPayload) => {
+    const room = roomRef.current;
+    if (room) await updateRoomMetadata(room, payload);
+  }, []);
+
+  const keepOpen = useCallback(async () => {
+    const room = roomRef.current;
+    if (room) await keepRoomOpen(room);
+    setIdleEndsAt(null);
+  }, []);
 
   const leaveRoom = useCallback(async () => {
     const room = roomRef.current;
@@ -230,6 +274,9 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       selfPlayerId,
       hostPlayerId,
       setId,
+      roomName,
+      roomDescription,
+      idleEndsAt,
       players,
       cards,
       stacks,
@@ -237,6 +284,9 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       createRoom,
       joinRoom,
       leaveRoom,
+      endRoom,
+      updateRoomDetails,
+      keepOpen,
       subscribeCatalogChanges,
     }),
     [
@@ -247,6 +297,9 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       selfPlayerId,
       hostPlayerId,
       setId,
+      roomName,
+      roomDescription,
+      idleEndsAt,
       players,
       cards,
       stacks,
@@ -254,6 +307,9 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       createRoom,
       joinRoom,
       leaveRoom,
+      endRoom,
+      updateRoomDetails,
+      keepOpen,
       subscribeCatalogChanges,
     ],
   );

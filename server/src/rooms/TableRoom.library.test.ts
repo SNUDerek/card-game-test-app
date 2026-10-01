@@ -162,6 +162,8 @@ describe("TableRoom bound to a library set", () => {
       .resolves.toEqual({ updated: true });
     await until(() => room.metadata.name === "After");
     expect(room.metadata).toMatchObject({ name: "After", description: "Updated" });
+    // Clients cannot read metadata, so it is mirrored into synced state.
+    expect(room.state).toMatchObject({ name: "After", description: "Updated" });
   });
 
   it("refreshes room set metadata when its bound set is renamed", async () => {

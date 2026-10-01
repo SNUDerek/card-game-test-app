@@ -5,18 +5,20 @@ import { Link } from "wouter";
 import { apiRequest } from "../../api/client";
 import { useMultiplayer } from "../../multiplayer/MultiplayerContext";
 import { useCurrentUser } from "../auth/AuthContext";
+import { RoomBrowser } from "./RoomBrowser";
 import "./Lobby.css";
 
 type LobbyMode = "create" | "join";
 
 export function Lobby() {
-  const { status, invitedRoomId, connectionError, createRoom, joinRoom } = useMultiplayer();
+  const { status, invitedRoomId, connectionError, createRoom, joinRoom, endRoom } = useMultiplayer();
   const { user, logout } = useCurrentUser();
   const [mode, setMode] = useState<LobbyMode>(invitedRoomId ? "join" : "create");
   const [roomCode, setRoomCode] = useState(invitedRoomId ?? "");
   const [sets, setSets] = useState<CardSetSummary[]>([]);
   const [setId, setSetId] = useState("");
   const [roomName, setRoomName] = useState("");
+  const [roomDescription, setRoomDescription] = useState("");
   const [setsError, setSetsError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,7 +46,11 @@ export function Lobby() {
 
     // Connection errors are surfaced through `connectionError`.
     try {
-      if (mode === "create") await createRoom({ setId, name: roomName.trim() });
+      if (mode === "create") await createRoom({
+        setId,
+        name: roomName.trim(),
+        ...(roomDescription.trim() && { description: roomDescription.trim() }),
+      });
       else await joinRoom({ roomId: roomCode.trim() });
     } catch {
       /* already reported */
@@ -87,6 +93,9 @@ export function Lobby() {
             <label htmlFor="lobby-room-name">Room name</label>
             <input id="lobby-room-name" value={roomName} maxLength={100}
               onChange={(event) => setRoomName(event.target.value)} />
+            <label htmlFor="lobby-room-description">Description (optional)</label>
+            <textarea id="lobby-room-description" value={roomDescription} rows={2} maxLength={2000}
+              onChange={(event) => setRoomDescription(event.target.value)} />
           </>
         ) : (
           <>
@@ -112,6 +121,11 @@ export function Lobby() {
         )}
         {setsError && <p className="lobby-error" role="alert">{setsError}</p>}
       </form>
+      <RoomBrowser
+        disabled={isConnecting}
+        onJoin={(roomId) => void joinRoom({ roomId }).catch(() => undefined)}
+        onEnd={endRoom}
+      />
     </main>
   );
 }

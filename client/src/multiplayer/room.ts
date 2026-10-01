@@ -12,6 +12,8 @@ export interface ClientRoomState {
   hostPlayerId: PlayerId;
   /** The library set this table plays. */
   setId: string;
+  name: string;
+  description: string;
 }
 
 export type TableRoom = Room<any, ClientRoomState>;
