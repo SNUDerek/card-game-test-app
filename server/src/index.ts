@@ -6,6 +6,7 @@ import {
   requireAuthPepper, trustProxySetting,
 } from "./config/env.js";
 import { TableRoom } from "./rooms/TableRoom.js";
+import { parseIdleTimeoutMinutes } from "./rooms/idle-timeout.js";
 import { openDatabase } from "./db/connection.js";
 import { UserRepository } from "./auth/users.js";
 import { SessionRepository } from "./auth/sessions.js";
@@ -27,6 +28,7 @@ const sessions = new SessionRepository(database);
 const images = new ImageStore(new ImageRepository(database), IMAGES_DIR);
 const usageRegistry = new SetUsageRegistry();
 const creationRegistry = new RoomCreationRegistry();
+const idleTimeoutMs = parseIdleTimeoutMinutes(process.env.ROOM_IDLE_TIMEOUT_MINUTES) * 60_000;
 const workspace = new WorkspaceService(database, images, usageRegistry);
 sessions.deleteExpired();
 const sessionCleanup = setInterval(() => sessions.deleteExpired(), 24 * 60 * 60 * 1_000);
@@ -40,8 +42,10 @@ const server = defineServer({
       cardLibrary: workspace.cardLibrary,
       displayNameFor: (userId: string) => users.displayName(userId),
       usageRegistry,
+      deckLookup: workspace,
       creationRegistry,
       requireHttpCreation: true,
+      idleTimeoutMs,
     }),
   },
   express: (app) => {
@@ -59,7 +63,7 @@ const server = defineServer({
     });
     app.use("/api", requireUser(sessions, COOKIE_SECURE));
     app.use("/images", requireUser(sessions, COOKIE_SECURE));
-    registerRoomRoutes(app, { workspace, creationRegistry });
+    registerRoomRoutes(app, { workspace, creationRegistry, usageRegistry });
     registerWorkspaceRoutes(app, workspace, images);
     app.use(workspaceErrorHandler);
   },

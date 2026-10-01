@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { PlayerId } from "./ids.js";
 import { CardFaceSchema } from "./room.js";
 import { DeckEntriesSchema } from "./decks.js";
+import { DESCRIPTION_MAX_LENGTH, ROOM_NAME_MAX_LENGTH } from "./library.js";
 
 export const TABLE_COMMANDS = {
   SPAWN_CARD: "SPAWN_CARD",
@@ -33,6 +34,8 @@ export const ROOM_COMMANDS = {
    * so a client cannot derive this on its own.
    */
   SESSION: "SESSION",
+  UPDATE_ROOM_METADATA: "UPDATE_ROOM_METADATA",
+  KEEP_OPEN: "KEEP_OPEN",
 } as const;
 
 /** Messages the server broadcasts to every client in a room. */
@@ -41,6 +44,8 @@ export const ROOM_EVENTS = {
   CATALOG_CHANGED: "CATALOG_CHANGED",
   /** Someone ended the room; members are about to be disconnected. */
   ROOM_ENDED: "ROOM_ENDED",
+  ROOM_IDLE_WARNING: "ROOM_IDLE_WARNING",
+  ROOM_IDLE_RESUMED: "ROOM_IDLE_RESUMED",
 } as const;
 
 export interface CatalogChangedEvent {
@@ -54,6 +59,16 @@ export interface CatalogChangedEvent {
 export interface RoomEndedEvent {
   message: string;
 }
+
+export interface RoomIdleWarningEvent { endsAt: number }
+
+export const UpdateRoomMetadataPayloadSchema = z.object({
+  name: z.string().trim().min(1).max(ROOM_NAME_MAX_LENGTH).optional(),
+  description: z.string().trim().max(DESCRIPTION_MAX_LENGTH).optional(),
+}).refine((value) => value.name !== undefined || value.description !== undefined, {
+  message: "Provide a room name or description.",
+});
+export type UpdateRoomMetadataPayload = z.infer<typeof UpdateRoomMetadataPayloadSchema>;
 
 export interface SessionResult {
   playerId: PlayerId;
@@ -83,6 +98,12 @@ export const SpawnDeckPayloadSchema = z.discriminatedUnion("source", [
   PositionSchema.extend({
     source: z.literal("entries"),
     entries: DeckEntriesSchema,
+    shuffle: z.boolean(),
+    face: CardFaceSchema,
+  }),
+  PositionSchema.extend({
+    source: z.literal("deck"),
+    deckId: z.string().uuid(),
     shuffle: z.boolean(),
     face: CardFaceSchema,
   }),

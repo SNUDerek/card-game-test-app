@@ -31,6 +31,14 @@ export class SetUsageRegistry {
     if (rooms.size === 0) this.roomIdsBySet.delete(setId);
   }
 
+  /** Replaces an HTTP creation reservation with its newly-created room id. */
+  transfer(fromRoomId: string, toRoomId: string): void {
+    const setId = this.setIdByRoom.get(fromRoomId);
+    if (!setId) return;
+    this.release(fromRoomId);
+    this.acquire(setId, toRoomId);
+  }
+
   isInUse(setId: string): boolean {
     return this.roomIdsBySet.has(setId);
   }

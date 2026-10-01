@@ -4,6 +4,7 @@ import { defineRoom } from "colyseus";
 import { ROOM_EVENTS, TABLE_COMMANDS, type CatalogChangedEvent } from "@card-table/shared";
 import { openDatabase, type WorkspaceDatabase } from "../db/connection.js";
 import { SetRepository } from "../db/sets.js";
+import { DeckRepository } from "../db/decks.js";
 import { cardContent, seedImage, seedUser } from "../db/test-fixtures.js";
 import { CardLibrary } from "../library/card-library.js";
 import { SetUsageRegistry } from "../library/set-usage.js";
@@ -40,6 +41,7 @@ describe("TableRoom bound to a library set", () => {
         table: defineRoom(TableRoom, {
           cardLibrary: library,
           usageRegistry: usage,
+          deckLookup: { getDeck: (id: string) => new DeckRepository(db).require(id) },
           displayNameFor: (id: string) => (id === userId ? "Alice" : undefined),
           reconnectionGraceSeconds: 0,
           authenticate: (_cookie, options) => {
@@ -130,6 +132,52 @@ describe("TableRoom bound to a library set", () => {
     expect(received).toEqual([
       { setId: set.id, changedCardIds: [card.id], editorName: "Alice" },
     ]);
+  });
+
+  it("deals a saved deck only when it belongs to the room's set", async () => {
+    const set = createSet("Deck set");
+    const other = createSet("Other deck set");
+    const card = library.createCard(set.id, cardContent(imageId), userId);
+    const foreignCard = library.createCard(other.id, cardContent(imageId), userId);
+    const decks = new DeckRepository(db);
+    const deck = decks.create(set.id, { name: "Starter", description: "", entries: [{ cardId: card.id, copies: 2 }] }, userId);
+    const foreign = decks.create(other.id, { name: "Foreign", description: "", entries: [{ cardId: foreignCard.id, copies: 2 }] }, userId);
+    const room = await colyseus.createRoom<TableRoom>("table", { setId: set.id });
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+
+    await expect(alice.request(TABLE_COMMANDS.SPAWN_DECK, {
+      source: "deck", deckId: deck.id, x: 5, y: 10, shuffle: false, face: "back",
+    })).resolves.toMatchObject({ kind: "stack", cardCount: 2 });
+    await expect(alice.request(TABLE_COMMANDS.SPAWN_DECK, {
+      source: "deck", deckId: foreign.id, x: 5, y: 10, shuffle: false, face: "back",
+    })).rejects.toThrow("Deck is not in this room's set");
+  });
+
+  it("updates shared room metadata through its semantic command", async () => {
+    const set = createSet("Metadata");
+    const room = await colyseus.createRoom<TableRoom>("table", { setId: set.id, name: "Before" });
+    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+
+    await expect(alice.request("UPDATE_ROOM_METADATA", { name: "After", description: "Updated" }))
+      .resolves.toEqual({ updated: true });
+    await until(() => room.metadata.name === "After");
+    expect(room.metadata).toMatchObject({ name: "After", description: "Updated" });
+  });
+
+  it("refreshes room set metadata when its bound set is renamed", async () => {
+    const set = createSet("Old set name");
+    const room = await colyseus.createRoom<TableRoom>("table", { setId: set.id });
+    library.updateSet(set.id, set.revision, { name: "New set name" }, userId);
+
+    await until(() => room.metadata.setName === "New set name");
+  });
+
+  it("expires an idle room and releases its set usage lock", async () => {
+    const set = createSet("Expiring");
+    const room = await colyseus.createRoom<TableRoom>("table", { setId: set.id, idleTimeoutMs: 1_000 });
+    await colyseus.connectTo(room, { displayName: "Alice" });
+
+    await until(() => !usage.isInUse(set.id), 3_000);
   });
 
   it("stops listening for library changes once disposed", async () => {

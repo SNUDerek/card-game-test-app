@@ -27,7 +27,7 @@ export function expandDeckEntries(entries: readonly DeckEntry[]): CardDefinition
 export function spawnDeck(
   state: RoomState,
   definitionIds: CardDefinitionLookup,
-  payload: SpawnDeckPayload,
+  payload: Extract<SpawnDeckPayload, { source: "entries" }>,
   { createId = randomUUID, randomInt = defaultRandomInt }: SpawnDeckOptions = {},
 ): SpawnDeckResult {
   const unknown = payload.entries.find((entry) => !definitionIds.has(entry.cardId));

@@ -58,6 +58,13 @@ export class CardLibrary extends EventEmitter<{ changed: [LibraryChange] }> {
     return card !== undefined && !card.archived;
   }
 
+  /** Verifies a room can bind this set and returns its live display metadata. */
+  requireActiveSet(setId: string): CardSet {
+    const set = this.sets.require(setId);
+    if (set.archived) throw new LibraryError("not_found", "Set not found.");
+    return set;
+  }
+
   /** A live view of a set's active card ids for command validation; it sees later edits. */
   activeCardIds(setId: string): CardDefinitionLookup {
     return { has: (cardId) => this.hasActiveCard(setId, cardId) };

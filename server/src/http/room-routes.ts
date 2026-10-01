@@ -7,6 +7,7 @@ import { HttpError } from "./errors.js";
 import type { TableRoom } from "../rooms/TableRoom.js";
 import type { RoomCreationRegistry } from "../rooms/room-creation.js";
 import { parseRequest, requestUser } from "./request.js";
+import type { SetUsageRegistry } from "../library/set-usage.js";
 
 export interface RoomListing {
   roomId: string;
@@ -49,19 +50,24 @@ export function registerRoomRoutes(
     workspace: WorkspaceService;
     gateway?: RoomGateway;
     creationRegistry?: RoomCreationRegistry;
+    usageRegistry?: SetUsageRegistry;
   },
 ): void {
-  const { workspace, gateway = colyseusRoomGateway, creationRegistry } = options;
+  const { workspace, gateway = colyseusRoomGateway, creationRegistry, usageRegistry } = options;
   const json = express.json({ type: "application/json", limit: "16kb" });
 
   app.get("/api/rooms", async (_req, res, next) => {
     try {
-      const rooms = (await gateway.list()).map((room) => ({
-        id: room.roomId,
-        playerCount: room.clients,
-        maxPlayers: room.maxClients,
-        ...room.metadata,
-      }));
+      const rooms = (await gateway.list()).map((room) => {
+        const metadata = room.metadata ?? {};
+        return {
+          id: room.roomId, playerCount: room.clients, maxPlayers: room.maxClients,
+          name: typeof metadata.name === "string" ? metadata.name : "Table",
+          description: typeof metadata.description === "string" ? metadata.description : "",
+          setId: typeof metadata.setId === "string" ? metadata.setId : "",
+          setName: typeof metadata.setName === "string" ? metadata.setName : "",
+        };
+      });
       res.json({ rooms });
     } catch (error) { next(error); }
   });
@@ -72,6 +78,7 @@ export function registerRoomRoutes(
       const set = workspace.sets.require(room.setId);
       if (set.archived) throw new HttpError(404, "Set not found.");
       const creationToken = creationRegistry?.issue(set.id);
+      if (creationToken) usageRegistry?.acquire(set.id, creationToken);
       let reservation;
       try {
         reservation = await gateway.create({
@@ -80,7 +87,10 @@ export function registerRoomRoutes(
           creationToken,
         }, authContext(req));
       } catch (error) {
-        if (creationToken) creationRegistry?.revoke(creationToken);
+        if (creationToken) {
+          creationRegistry?.revoke(creationToken);
+          usageRegistry?.release(creationToken);
+        }
         throw error;
       }
       res.status(201).json(reservation);
