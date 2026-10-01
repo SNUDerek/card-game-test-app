@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { CardDefinition } from "@card-table/shared";
 import { useCardCatalog } from "./CardCatalogContext";
+import { DeckDealPanel } from "./DeckDealPanel";
 import "./CardBrowser.css";
 
 export const CARD_DEFINITION_MIME_TYPE = "application/x-card-definition-id";
@@ -18,6 +19,7 @@ export function CardBrowser() {
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("position");
+  const [view, setView] = useState<"cards" | "decks">("cards");
 
   const filteredCards = useMemo(() => {
     const query = filter.trim().toLocaleLowerCase();
@@ -49,66 +51,81 @@ export function CardBrowser() {
           aria-label="Card catalog"
         >
           <div className="card-browser-header">
-            <h2>Card Catalog</h2>
-            <div className="card-browser-controls">
-              <label className="visually-hidden" htmlFor="card-browser-filter">
-                Filter cards
-              </label>
-              <input
-                id="card-browser-filter"
-                type="text"
-                placeholder="Filter cards..."
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                className="card-browser-filter"
-              />
-              <label className="visually-hidden" htmlFor="card-browser-sort">
-                Sort cards
-              </label>
-              <select
-                id="card-browser-sort"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortKey)}
-                className="card-browser-sort"
+            <div className="card-browser-title">
+              <h2>{view === "cards" ? "Card Catalog" : "Decks"}</h2>
+              <button
+                className="card-browser-view"
+                type="button"
+                onClick={() => setView((current) => (current === "cards" ? "decks" : "cards"))}
               >
-                <option value="position">Set order</option>
-                <option value="name">Sort by Name</option>
-                <option value="type">Sort by Type</option>
-              </select>
+                {view === "cards" ? "Deal a deck" : "Back to cards"}
+              </button>
             </div>
+            {view === "cards" && (
+              <div className="card-browser-controls">
+                <label className="visually-hidden" htmlFor="card-browser-filter">
+                  Filter cards
+                </label>
+                <input
+                  id="card-browser-filter"
+                  type="text"
+                  placeholder="Filter cards..."
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  className="card-browser-filter"
+                />
+                <label className="visually-hidden" htmlFor="card-browser-sort">
+                  Sort cards
+                </label>
+                <select
+                  id="card-browser-sort"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortKey)}
+                  className="card-browser-sort"
+                >
+                  <option value="position">Set order</option>
+                  <option value="name">Sort by Name</option>
+                  <option value="type">Sort by Type</option>
+                </select>
+              </div>
+            )}
           </div>
 
-          <div className="card-browser-grid">
-            {isLoading && <p className="card-browser-status">Loading catalog…</p>}
-            {error && <p className="card-browser-status card-browser-error">{error}</p>}
-            {!isLoading && !error && filteredCards.length === 0 && (
-              <p className="card-browser-status">No cards match this filter.</p>
-            )}
-            {!isLoading &&
-              !error &&
-              filteredCards.map((card) => (
-                <article key={card.id} className="card-browser-item">
-                  {/* Only the artwork is draggable, so the row's text stays
-                      selectable for copying into notes. */}
-                  <img
-                    src={card.imageUrl}
-                    alt={`Drag ${card.name} onto the table`}
-                    className="card-image"
-                    loading="lazy"
-                    decoding="async"
-                    draggable
-                    onDragStart={(event) => {
-                      event.dataTransfer.effectAllowed = "copy";
-                      event.dataTransfer.setData(CARD_DEFINITION_MIME_TYPE, card.id);
-                    }}
-                  />
-                  <div className="card-info">
-                    <div className="card-name">{card.name}</div>
-                    <div className="card-type">{card.type}</div>
-                  </div>
-                </article>
-              ))}
-          </div>
+          {view === "decks" ? (
+            <DeckDealPanel hasCards={cards.length > 0} />
+          ) : (
+            <div className="card-browser-grid">
+              {isLoading && <p className="card-browser-status">Loading catalog…</p>}
+              {error && <p className="card-browser-status card-browser-error">{error}</p>}
+              {!isLoading && !error && filteredCards.length === 0 && (
+                <p className="card-browser-status">No cards match this filter.</p>
+              )}
+              {!isLoading &&
+                !error &&
+                filteredCards.map((card) => (
+                  <article key={card.id} className="card-browser-item">
+                    {/* Only the artwork is draggable, so the row's text stays
+                        selectable for copying into notes. */}
+                    <img
+                      src={card.imageUrl}
+                      alt={`Drag ${card.name} onto the table`}
+                      className="card-image"
+                      loading="lazy"
+                      decoding="async"
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = "copy";
+                        event.dataTransfer.setData(CARD_DEFINITION_MIME_TYPE, card.id);
+                      }}
+                    />
+                    <div className="card-info">
+                      <div className="card-name">{card.name}</div>
+                      <div className="card-type">{card.type}</div>
+                    </div>
+                  </article>
+                ))}
+            </div>
+          )}
         </aside>
       )}
     </>

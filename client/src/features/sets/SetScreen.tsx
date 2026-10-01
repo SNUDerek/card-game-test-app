@@ -13,6 +13,7 @@ import { ApiConflictError, apiRequest } from "../../api/client";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { CardEditor } from "./cards/CardEditor";
 import { CardList } from "./cards/CardList";
+import { DeckList } from "./decks/DeckList";
 import { errorMessage } from "./errors";
 import "./workspace.css";
 
@@ -26,6 +27,7 @@ export default function SetScreen({ params }: { params: { id: string } }) {
   const [, navigate] = useLocation();
   const [set, setSet] = useState<CardSet | null>(null);
   const [cards, setCards] = useState<CardDefinition[]>([]);
+  const [tab, setTab] = useState<"cards" | "decks">("cards");
   const [editing, setEditing] = useState<EditingCard>(undefined);
   const [nameDraft, setNameDraft] = useState("");
   const [descriptionDraft, setDescriptionDraft] = useState("");
@@ -153,9 +155,20 @@ export default function SetScreen({ params }: { params: { id: string } }) {
       )}
 
       <nav className="set-tabs" aria-label="Set sections">
-        <button type="button" className="active">Cards</button>
+        <button type="button" className={tab === "cards" ? "active" : undefined}
+          aria-current={tab === "cards" ? "page" : undefined} onClick={() => setTab("cards")}>
+          Cards
+        </button>
+        <button type="button" className={tab === "decks" ? "active" : undefined}
+          aria-current={tab === "decks" ? "page" : undefined} onClick={() => setTab("decks")}>
+          Decks
+        </button>
       </nav>
-      <CardList cards={cards} onEdit={setEditing} onNew={() => setEditing(null)} />
+      {tab === "cards" ? (
+        <CardList cards={cards} onEdit={setEditing} onNew={() => setEditing(null)} />
+      ) : (
+        <DeckList setId={set.id} cards={cards} />
+      )}
 
       {editing !== undefined && (
         <CardEditor
