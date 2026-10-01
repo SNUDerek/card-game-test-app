@@ -8,6 +8,7 @@ export const DATA_DIR = path.resolve(
   process.env.DATA_DIR ?? path.join(import.meta.dirname, "../../../data"),
 );
 export const DATABASE_FILE = path.join(DATA_DIR, "workspace.db");
+export const IMAGES_DIR = path.join(DATA_DIR, "images");
 
 export function requireAuthPepper(): string {
   const pepper = process.env.AUTH_PEPPER;

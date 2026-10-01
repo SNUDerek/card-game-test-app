@@ -9,7 +9,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "user:create": "tsx src/auth/create-user.ts"
+    "user:create": "tsx src/auth/create-user.ts",
+    "cards:import": "tsx src/library/import-cards-cli.ts"
   },
   "dependencies": {
     "@card-table/shared": "*",

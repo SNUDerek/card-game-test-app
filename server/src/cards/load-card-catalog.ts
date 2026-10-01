@@ -14,6 +14,12 @@ const SUPPORTED_IMAGE_EXTENSIONS = new Set([".jpg", ".png"]);
 
 export type CardCatalog = ReadonlyMap<CardDefinitionId, CardDefinition>;
 
+/** One validated card pair: its definition and the absolute path of its artwork. */
+export interface CardSourceFile {
+  definition: CardDefinition;
+  imagePath: string;
+}
+
 export class CardCatalogError extends Error {
   readonly issues: readonly string[];
 
@@ -67,18 +73,25 @@ async function groupFilesByStem(cardsDir: string): Promise<Map<string, StemFiles
   return byStem;
 }
 
+/** Scans `cardsDir` for matching JSON/image pairs and builds the card catalog. */
+export async function loadCardCatalog(cardsDir: string): Promise<CardCatalog> {
+  const sources = await loadCardSources(cardsDir);
+  return new Map(sources.map(({ definition }) => [definition.id, definition]));
+}
+
 /**
- * Scans `cardsDir` for matching JSON/image pairs and builds the card catalog.
+ * Validates every JSON/image pair in `cardsDir`, sorted by file stem. Used by
+ * the catalog above and by the library importer, which also needs the artwork.
  * Collects every validation issue across every file before failing, so a
  * single run reports the full set of problems rather than just the first.
  */
-export async function loadCardCatalog(cardsDir: string): Promise<CardCatalog> {
+export async function loadCardSources(cardsDir: string): Promise<CardSourceFile[]> {
   const byStem = [...(await groupFilesByStem(cardsDir)).entries()].sort(([a], [b]) =>
     a.localeCompare(b),
   );
 
   const issues: string[] = [];
-  const definitions: CardDefinition[] = [];
+  const sources: CardSourceFile[] = [];
 
   for (const [stem, { jsonFiles, images }] of byStem) {
     if (jsonFiles.length === 0) {
@@ -163,18 +176,18 @@ export async function loadCardCatalog(cardsDir: string): Promise<CardCatalog> {
       issues.push(`invalid derived card definition for ${json}: ${detail}`);
       continue;
     }
-    definitions.push(definition.data);
+    sources.push({ definition: definition.data, imagePath: path.join(cardsDir, imageFile) });
   }
 
-  const sourcesById = new Map<string, string[]>();
-  for (const def of definitions) {
-    const sources = sourcesById.get(def.id) ?? [];
-    sources.push(def.sourceName);
-    sourcesById.set(def.id, sources);
+  const stemsById = new Map<string, string[]>();
+  for (const { definition: def } of sources) {
+    const stems = stemsById.get(def.id) ?? [];
+    stems.push(def.sourceName);
+    stemsById.set(def.id, stems);
   }
-  for (const [id, sources] of sourcesById) {
-    if (sources.length > 1) {
-      issues.push(`duplicate card id '${id}' used by: ${sources.join(", ")}`);
+  for (const [id, stems] of stemsById) {
+    if (stems.length > 1) {
+      issues.push(`duplicate card id '${id}' used by: ${stems.join(", ")}`);
     }
   }
 
@@ -182,5 +195,5 @@ export async function loadCardCatalog(cardsDir: string): Promise<CardCatalog> {
     throw new CardCatalogError(issues);
   }
 
-  return new Map(definitions.map((def) => [def.id, def]));
+  return sources;
 }

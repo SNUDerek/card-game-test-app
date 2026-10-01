@@ -630,6 +630,18 @@ phases:
 
 These run in parallel with auth, provided their migrations are ordered after `users`:
 
+**Status: built** (branch `feature/persistent-workspace-library`). The library tables were
+already in `001-initial.sql`, so no new migration was needed. Still to wire in later phases:
+
+- No routes call the repositories, `CardLibrary`, `ImageStore`, or `forkSet()` yet.
+- `CardDefinitionSchema` is unchanged. Library cards use the new shared `LibraryCard`
+  type; switching the room and client over (with `setId`, `revision`, `archived`, and
+  `/images/<id>` URLs) belongs with set-scoped rooms.
+- `TableRoom` still validates against the boot-time `cards/` catalog. `CardLibrary.activeCardIds(setId)`
+  returns a live `has()` view meant to replace `cardDefinitionIds`.
+- `SetUsageRegistry` is not yet acquired or released by rooms, and archive paths don't
+  check it yet; routes must check it synchronously right before archiving.
+
 - Library migrations and repositories: `images`, `card_sets`, `cards`, `decks`, `deck_cards`.
 - `forkSet()`: one transaction, testable against `:memory:`.
 - Image store: hash, `image-size` check, write to `DATA_DIR/images`, insert row.
