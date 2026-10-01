@@ -71,9 +71,10 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
   const roomRef = useRef<TableRoom | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [roomId, setRoomId] = useState<RoomId | null>(null);
-  const [invitedRoomId, setInvitedRoomId] = useState<RoomId | null>(() =>
-    parseRoomIdFromPath(location),
-  );
+  // Only the URL the page loaded with can resume a stored seat; later
+  // navigation (including our own after joining) must not reconnect.
+  const [initialRoomId] = useState(() => parseRoomIdFromPath(location));
+  const [invitedRoomId, setInvitedRoomId] = useState<RoomId | null>(initialRoomId);
   const [selfPlayerId, setSelfPlayerId] = useState<PlayerId | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const { players, cards, stacks, hostPlayerId, syncRoom, resetSync } = useRoomSync();
@@ -171,10 +172,10 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
   // transport without consent so the server reserves this player's seat and
   // the stored reconnection token remains usable.
 
-  // A reload lands back on /room/<id> with the seat still reserved during the
+  // A reload lands back on /rooms/<id> with the seat still reserved during the
   // server's grace period, so resume it before showing the lobby.
   useEffect(() => {
-    const stored = readStoredSession(parseRoomIdFromPath(location));
+    const stored = readStoredSession(initialRoomId);
     if (!stored) return;
 
     let active = true;
@@ -197,7 +198,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [attachRoom, client, location]);
+  }, [attachRoom, client, initialRoomId]);
 
   const value = useMemo<MultiplayerValue>(
     () => ({

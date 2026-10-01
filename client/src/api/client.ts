@@ -29,10 +29,11 @@ export async function apiRequest<Schema extends z.ZodType>(
   schema: Schema,
   init?: RequestInit,
 ): Promise<z.infer<Schema>> {
-  const response = await fetch(path, {
-    ...init,
-    headers: init?.body ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
-  });
+  const headers = new Headers(init?.headers);
+  if (typeof init?.body === "string" && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  const response = await fetch(path, { ...init, headers });
   const body: unknown = response.status === 204
     ? undefined
     : await response.json().catch(() => ({}));

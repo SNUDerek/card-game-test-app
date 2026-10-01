@@ -16,6 +16,19 @@ describe("apiRequest", () => {
       .resolves.toEqual({ value: 3 });
   });
 
+  it("defaults JSON bodies to application/json but leaves binary uploads alone", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}", {
+      status: 200, headers: { "Content-Type": "application/json" },
+    }));
+    await apiRequest("/api/sets", z.unknown(), { method: "POST", body: "{}" });
+    await apiRequest("/api/images", z.unknown(), {
+      method: "POST", body: new Blob(["x"]), headers: new Headers({ "Content-Type": "image/webp" }),
+    });
+    const contentType = (call: number) => new Headers(fetchMock.mock.calls[call]![1]!.headers).get("Content-Type");
+    expect(contentType(0)).toBe("application/json");
+    expect(contentType(1)).toBe("image/webp");
+  });
+
   it("turns 409 responses into typed conflicts", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       error: "Reload first.", code: "stale_revision",
