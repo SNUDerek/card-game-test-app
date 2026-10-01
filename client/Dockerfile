@@ -4,7 +4,9 @@ COPY package.json package-lock.json tsconfig.base.json ./
 COPY shared/package.json shared/package.json
 COPY server/package.json server/package.json
 COPY client/package.json client/package.json
-RUN npm ci
+# Only the client and shared workspaces: the server's native modules (better-sqlite3)
+# need a compiler toolchain this stage doesn't have, and the client never uses them.
+RUN npm ci -w @card-table/shared -w @card-table/client
 COPY shared shared
 COPY client client
 RUN npm run build -w @card-table/shared && npm run build -w @card-table/client
