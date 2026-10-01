@@ -26,7 +26,7 @@ export function ConfirmDialog({
         <h2>{title}</h2>
         {children && <div className="confirm-body">{children}</div>}
         <div className="confirm-actions">
-          <button type="button" onClick={onCancel}>Cancel</button>
+          <button type="button" autoFocus onClick={onCancel}>Cancel</button>
           {actions.map((action) => (
             <button
               key={action.label}
