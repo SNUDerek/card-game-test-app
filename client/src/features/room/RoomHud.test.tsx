@@ -74,7 +74,7 @@ describe("RoomHud", () => {
     expect(screen.getByText("KM7XPQ3D")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
 
-    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/room/KM7XPQ3D`);
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/rooms/KM7XPQ3D`);
     expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
     vi.unstubAllGlobals();
   });

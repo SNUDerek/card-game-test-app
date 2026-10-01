@@ -1,4 +1,5 @@
 import { Client } from "@colyseus/sdk";
+import { useLocation } from "wouter";
 import {
   createContext,
   useCallback,
@@ -65,12 +66,13 @@ function serverEndpoint(): string {
 }
 
 export function MultiplayerProvider({ children }: { children: ReactNode }) {
+  const [location, navigate] = useLocation();
   const client = useMemo(() => new Client(serverEndpoint()), []);
   const roomRef = useRef<TableRoom | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [roomId, setRoomId] = useState<RoomId | null>(null);
   const [invitedRoomId, setInvitedRoomId] = useState<RoomId | null>(() =>
-    parseRoomIdFromPath(window.location.pathname),
+    parseRoomIdFromPath(location),
   );
   const [selfPlayerId, setSelfPlayerId] = useState<PlayerId | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -113,9 +115,9 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       setStatus("connected");
       setConnectionError(null);
       storeSession({ roomId: room.roomId, reconnectionToken: room.reconnectionToken });
-      window.history.pushState({}, "", roomPath(room.roomId));
+      navigate(roomPath(room.roomId));
     },
-    [resetSession, syncRoom],
+    [navigate, resetSession, syncRoom],
   );
 
   const connect = useCallback(
@@ -161,9 +163,9 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     resetSession();
     setInvitedRoomId(null);
     setConnectionError(null);
-    window.history.pushState({}, "", "/");
+    navigate("/");
     if (room) await room.leave();
-  }, [resetSession]);
+  }, [navigate, resetSession]);
 
   // Do not call room.leave() from an unmount cleanup. A reload must close the
   // transport without consent so the server reserves this player's seat and
@@ -172,7 +174,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
   // A reload lands back on /room/<id> with the seat still reserved during the
   // server's grace period, so resume it before showing the lobby.
   useEffect(() => {
-    const stored = readStoredSession(parseRoomIdFromPath(window.location.pathname));
+    const stored = readStoredSession(parseRoomIdFromPath(location));
     if (!stored) return;
 
     let active = true;
@@ -195,7 +197,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [attachRoom, client]);
+  }, [attachRoom, client, location]);
 
   const value = useMemo<MultiplayerValue>(
     () => ({

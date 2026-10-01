@@ -1,6 +1,7 @@
 import type { RoomId } from "@card-table/shared";
 
-export const ROOM_PATH_PREFIX = "/room/";
+export const ROOM_PATH_PREFIX = "/rooms/";
+export const LEGACY_ROOM_PATH_PREFIX = "/room/";
 
 /** Colyseus room ids are short random alphanumeric strings. */
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
@@ -11,8 +12,11 @@ export function isRoomId(value: string): value is RoomId {
 
 /** Reads the room id a shared URL points at, or null for the lobby. */
 export function parseRoomIdFromPath(pathname: string): RoomId | null {
-  if (!pathname.startsWith(ROOM_PATH_PREFIX)) return null;
-  const candidate = pathname.slice(ROOM_PATH_PREFIX.length).replace(/\/+$/, "");
+  const prefix = pathname.startsWith(ROOM_PATH_PREFIX)
+    ? ROOM_PATH_PREFIX
+    : pathname.startsWith(LEGACY_ROOM_PATH_PREFIX) ? LEGACY_ROOM_PATH_PREFIX : null;
+  if (!prefix) return null;
+  const candidate = pathname.slice(prefix.length).replace(/\/+$/, "");
   return isRoomId(candidate) ? candidate : null;
 }
 

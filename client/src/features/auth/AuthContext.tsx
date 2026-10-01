@@ -2,6 +2,7 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode,
 } from "react";
 import type { CurrentUser, LoginRequest, RegisterRequest } from "@card-table/shared";
+import { setUnauthorizedHandler } from "../../api/client";
 
 type AuthStatus = "loading" | "authenticated" | "anonymous";
 
@@ -28,6 +29,14 @@ async function authRequest(path: string, init?: RequestInit): Promise<CurrentUse
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<CurrentUser | null>(null);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setUser(null);
+      setStatus("anonymous");
+    });
+    return () => setUnauthorizedHandler(undefined);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -68,4 +77,3 @@ export function useCurrentUser(): AuthValue {
   if (!value) throw new Error("useCurrentUser must be used inside AuthProvider.");
   return value;
 }
-

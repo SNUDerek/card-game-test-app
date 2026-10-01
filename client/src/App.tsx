@@ -1,9 +1,8 @@
-import { CardBrowser } from "./features/card-browser/CardBrowser";
+import { lazy, Suspense } from "react";
+import { Redirect, Route, Router, Switch } from "wouter";
 import { CardCatalogProvider } from "./features/card-browser/CardCatalogContext";
 import { Lobby } from "./features/lobby/Lobby";
-import { RoomHud } from "./features/room/RoomHud";
 import { MultiplayerProvider, useMultiplayer } from "./multiplayer/MultiplayerContext";
-import { Table } from "./tabletop/Table";
 import { AuthProvider, useCurrentUser } from "./features/auth/AuthContext";
 import { AuthScreen } from "./features/auth/AuthScreen";
 
@@ -12,13 +11,19 @@ function Session() {
 
   if (status !== "connected") return <Lobby />;
 
-  return (
-    <>
-      <Table />
-      <RoomHud />
-      <CardBrowser />
-    </>
-  );
+  return <LazyRoomTable />;
+}
+
+const LazyRoomTable = lazy(() => import("./features/room/RoomScreen"));
+const SetListScreen = lazy(() => import("./features/sets/SetListScreen"));
+const SetScreen = lazy(() => import("./features/sets/SetScreen"));
+
+function RoomScreen() {
+  return <Session />;
+}
+
+function LegacyRoomRedirect({ params }: { params: { id: string } }) {
+  return <Redirect to={`/rooms/${params.id}`} replace />;
 }
 
 function AuthenticatedApp() {
@@ -28,12 +33,21 @@ function AuthenticatedApp() {
   return (
     <CardCatalogProvider>
       <MultiplayerProvider>
-        <Session />
+        <Suspense fallback={<main aria-label="Loading page" />}>
+          <Switch>
+            <Route path="/" component={Session} />
+            <Route path="/rooms/:id" component={RoomScreen} />
+            <Route path="/room/:id" component={LegacyRoomRedirect} />
+            <Route path="/sets" component={SetListScreen} />
+            <Route path="/sets/:id" component={SetScreen} />
+            <Route><Redirect to="/" replace /></Route>
+          </Switch>
+        </Suspense>
       </MultiplayerProvider>
     </CardCatalogProvider>
   );
 }
 
 export function App() {
-  return <AuthProvider><AuthenticatedApp /></AuthProvider>;
+  return <Router><AuthProvider><AuthenticatedApp /></AuthProvider></Router>;
 }
