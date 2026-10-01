@@ -48,5 +48,12 @@ export class UserRepository {
     `).get(username) as UserRow | undefined;
     return row ? mapUser(row) : undefined;
   }
+
+  displayName(id: string): string | undefined {
+    const row = this.db.prepare("SELECT display_name FROM users WHERE id = ?").get(id) as
+      | { display_name: string }
+      | undefined;
+    return row?.display_name;
+  }
 }
 

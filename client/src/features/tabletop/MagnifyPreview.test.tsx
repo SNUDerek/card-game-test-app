@@ -23,11 +23,16 @@ vi.mock("konva", () => ({
 
 const definition: CardDefinition = {
   id: "spell-001",
+  setId: "set-1",
   name: "Fireball",
   type: "spell",
   body: "Deal 3 damage.",
-  imageUrl: "/cards/fireball.png",
-  sourceName: "fireball",
+  imageId: "fireball",
+  imageUrl: "/images/fireball",
+  position: 0,
+  revision: 1,
+  archived: false,
+  updatedAt: 0,
 };
 
 const container = { width: 2000, height: 2000 };

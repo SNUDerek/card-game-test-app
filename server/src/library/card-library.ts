@@ -4,6 +4,7 @@ import type { WorkspaceDatabase } from "../db/connection.js";
 import { CardRepository } from "../db/cards.js";
 import { SetRepository } from "../db/sets.js";
 import { LibraryError } from "./errors.js";
+import type { CardDefinitionLookup } from "../commands/card/spawn-card.js";
 
 /** One write to a set or its cards. Live rooms bound to `setId` relay it to their players. */
 export interface LibraryChange {
@@ -12,11 +13,6 @@ export interface LibraryChange {
   cardIds: string[];
   /** Who made the change, so tables can say "Alice edited Fireball". */
   userId: string | null;
-}
-
-/** The only membership test rooms need, matching `ReadonlySet#has`. */
-export interface CardIdLookup {
-  has(cardId: string): boolean;
 }
 
 /**
@@ -32,14 +28,14 @@ export interface CardIdLookup {
  * the archiving method, with no `await` between them.
  */
 export class CardLibrary extends EventEmitter<{ changed: [LibraryChange] }> {
-  private readonly sets: SetRepository;
-  private readonly cards: CardRepository;
   private readonly cardsBySet = new Map<string, Map<string, LibraryCard>>();
 
-  constructor(db: WorkspaceDatabase) {
+  constructor(
+    db: WorkspaceDatabase,
+    private readonly sets = new SetRepository(db),
+    private readonly cards = new CardRepository(db),
+  ) {
     super();
-    this.sets = new SetRepository(db);
-    this.cards = new CardRepository(db);
   }
 
   /** Every card of a set in display order; archived cards only when asked for. */
@@ -63,7 +59,7 @@ export class CardLibrary extends EventEmitter<{ changed: [LibraryChange] }> {
   }
 
   /** A live view of a set's active card ids for command validation; it sees later edits. */
-  activeCardIds(setId: string): CardIdLookup {
+  activeCardIds(setId: string): CardDefinitionLookup {
     return { has: (cardId) => this.hasActiveCard(setId, cardId) };
   }
 
@@ -74,6 +70,10 @@ export class CardLibrary extends EventEmitter<{ changed: [LibraryChange] }> {
   }
 
   updateCard(cardId: string, expectedRevision: number, content: CardContent, userId: string | null): LibraryCard {
+    const card = this.cards.require(cardId);
+    if (this.sets.require(card.setId).archived) {
+      throw new LibraryError("conflict", "Restore this set before editing its cards.");
+    }
     return this.remember(this.cards.update(cardId, expectedRevision, content, userId), userId);
   }
 
@@ -102,6 +102,12 @@ export class CardLibrary extends EventEmitter<{ changed: [LibraryChange] }> {
     userId: string | null,
   ): CardSet {
     const set = this.sets.update(setId, expectedRevision, changes);
+    this.emit("changed", { setId, cardIds: [], userId });
+    return set;
+  }
+
+  setArchived(setId: string, archived: boolean, userId: string | null): CardSet {
+    const set = this.sets.setArchived(setId, archived);
     this.emit("changed", { setId, cardIds: [], userId });
     return set;
   }

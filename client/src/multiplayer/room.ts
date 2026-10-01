@@ -10,6 +10,8 @@ export interface ClientRoomState {
   stacks: Map<string, CardStack>;
   players: Map<string, Player>;
   hostPlayerId: PlayerId;
+  /** The library set this table plays. */
+  setId: string;
 }
 
 export type TableRoom = Room<any, ClientRoomState>;

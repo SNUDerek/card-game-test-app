@@ -24,6 +24,7 @@ function fakeRoom(roomId: string, reconnectionToken: string) {
     state: {},
     onStateChange: vi.fn(),
     onLeave: vi.fn(),
+    onMessage: vi.fn(),
     request: vi.fn(() => new Promise(() => undefined)),
     leave: vi.fn(async () => undefined),
   };

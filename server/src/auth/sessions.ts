@@ -6,6 +6,11 @@ export const SESSION_COOKIE = "card_table_session";
 export const SESSION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1_000;
 const SESSION_SLIDE_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;
 
+export interface SessionLookup {
+  user: CurrentUser;
+  slid: boolean;
+}
+
 interface SessionUserRow {
   id: string;
   username: string;
@@ -43,7 +48,7 @@ export class SessionRepository {
     return token;
   }
 
-  findUser(token: string, now = Date.now()): CurrentUser | undefined {
+  findUser(token: string, now = Date.now()): SessionLookup | undefined {
     const tokenHash = hashSessionToken(token);
     const row = this.db.prepare(`
       SELECT users.id, users.username, users.display_name, sessions.expires_at
@@ -51,11 +56,15 @@ export class SessionRepository {
       WHERE sessions.token_hash = ? AND sessions.expires_at > ?
     `).get(tokenHash, now) as SessionUserRow | undefined;
     if (!row) return undefined;
-    if (row.expires_at - now < SESSION_SLIDE_WINDOW_MS) {
+    const slid = row.expires_at - now < SESSION_SLIDE_WINDOW_MS;
+    if (slid) {
       this.db.prepare("UPDATE sessions SET expires_at = ? WHERE token_hash = ?")
         .run(now + SESSION_LIFETIME_MS, tokenHash);
     }
-    return { id: row.id, username: row.username, displayName: row.display_name };
+    return {
+      user: { id: row.id, username: row.username, displayName: row.display_name },
+      slid,
+    };
   }
 
   revoke(token: string): void {
@@ -66,4 +75,3 @@ export class SessionRepository {
     return this.db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(now).changes;
   }
 }
-

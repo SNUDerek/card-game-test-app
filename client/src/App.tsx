@@ -1,6 +1,5 @@
 import { lazy, Suspense } from "react";
 import { Redirect, Route, Router, Switch } from "wouter";
-import { CardCatalogProvider } from "./features/card-browser/CardCatalogContext";
 import { Lobby } from "./features/lobby/Lobby";
 import { MultiplayerProvider, useMultiplayer } from "./multiplayer/MultiplayerContext";
 import { AuthProvider, useCurrentUser } from "./features/auth/AuthContext";
@@ -31,20 +30,18 @@ function AuthenticatedApp() {
   if (status === "loading") return <main className="auth-screen" aria-label="Loading" />;
   if (status === "anonymous") return <AuthScreen />;
   return (
-    <CardCatalogProvider>
-      <MultiplayerProvider>
-        <Suspense fallback={<main aria-label="Loading page" />}>
-          <Switch>
-            <Route path="/" component={Session} />
-            <Route path="/rooms/:id" component={RoomScreen} />
-            <Route path="/room/:id" component={LegacyRoomRedirect} />
-            <Route path="/sets" component={SetListScreen} />
-            <Route path="/sets/:id" component={SetScreen} />
-            <Route><Redirect to="/" replace /></Route>
-          </Switch>
-        </Suspense>
-      </MultiplayerProvider>
-    </CardCatalogProvider>
+    <MultiplayerProvider>
+      <Suspense fallback={<main aria-label="Loading page" />}>
+        <Switch>
+          <Route path="/" component={Session} />
+          <Route path="/rooms/:id" component={RoomScreen} />
+          <Route path="/room/:id" component={LegacyRoomRedirect} />
+          <Route path="/sets" component={SetListScreen} />
+          <Route path="/sets/:id" component={SetScreen} />
+          <Route><Redirect to="/" replace /></Route>
+        </Switch>
+      </Suspense>
+    </MultiplayerProvider>
   );
 }
 

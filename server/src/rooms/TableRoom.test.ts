@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom } from "colyseus";
 import { TableRoom } from "./TableRoom.js";
+import { fixedCardLibrary } from "./test-card-library.js";
 import { TABLE_COMMANDS } from "@card-table/shared";
 
 describe("TableRoom connection lifecycle", () => {
@@ -11,7 +12,8 @@ describe("TableRoom connection lifecycle", () => {
     colyseus = await boot({
       rooms: {
         table: defineRoom(TableRoom, {
-          cardDefinitionIds: ["spell-1"],
+          setId: "set-1",
+          cardLibrary: fixedCardLibrary(["spell-1"]),
           lockTimeoutMs: 75,
           authenticate: (_cookie, options) => {
             const displayName = String((options as { displayName?: string })?.displayName ?? "").trim();
@@ -463,7 +465,6 @@ describe("TableRoom connection lifecycle", () => {
 
   it("throttles a command flood without dropping the room", async () => {
     const room = await colyseus.createRoom<TableRoom>("table", {
-      cardDefinitionIds: ["spell-1"],
       commandRateLimit: { burst: 5, perSecond: 1 },
     });
     const alice = await colyseus.connectTo(room, { displayName: "Alice" });
@@ -492,9 +493,7 @@ describe("TableRoom connection lifecycle", () => {
   // every player, which is how a single stale message used to end a session.
   describe("commands sent without awaiting a reply", () => {
     it("survives a hover naming a card that was just deleted", async () => {
-      const room = await colyseus.createRoom<TableRoom>("table", {
-        cardDefinitionIds: ["spell-1"],
-      });
+      const room = await colyseus.createRoom<TableRoom>("table");
       const alice = await colyseus.connectTo(room, { displayName: "Alice" });
       const bob = await colyseus.connectTo(room, { displayName: "Bob" });
 
@@ -524,9 +523,7 @@ describe("TableRoom connection lifecycle", () => {
     });
 
     it("survives a rejected move of a card another player holds", async () => {
-      const room = await colyseus.createRoom<TableRoom>("table", {
-        cardDefinitionIds: ["spell-1"],
-      });
+      const room = await colyseus.createRoom<TableRoom>("table");
       const alice = await colyseus.connectTo(room, { displayName: "Alice" });
       const bob = await colyseus.connectTo(room, { displayName: "Bob" });
 
@@ -554,9 +551,7 @@ describe("TableRoom connection lifecycle", () => {
     });
 
     it("still rejects to a client that does await a reply", async () => {
-      const room = await colyseus.createRoom<TableRoom>("table", {
-        cardDefinitionIds: ["spell-1"],
-      });
+      const room = await colyseus.createRoom<TableRoom>("table");
       const alice = await colyseus.connectTo(room, { displayName: "Alice" });
       const bob = await colyseus.connectTo(room, { displayName: "Bob" });
 

@@ -17,11 +17,6 @@ describe("application routing", () => {
           status: 200, headers: { "Content-Type": "application/json" },
         });
       }
-      if (path === "/api/cards") {
-        return new Response(JSON.stringify({ cards: [] }), {
-          status: 200, headers: { "Content-Type": "application/json" },
-        });
-      }
       return new Response("{}", { status: 404 });
     });
   });

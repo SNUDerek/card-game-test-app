@@ -10,12 +10,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type {
-  CardInstance,
-  CardStack,
-  Player,
-  PlayerId,
-  RoomId,
+import {
+  ROOM_EVENTS,
+  type CardInstance,
+  type CardStack,
+  type CatalogChangedEvent,
+  type Player,
+  type PlayerId,
+  type RoomId,
 } from "@card-table/shared";
 import { requestSession } from "./commands";
 import { resolveServerEndpoint } from "./endpoint";
@@ -50,6 +52,8 @@ interface MultiplayerValue extends TableCommands {
   invitedRoomId: RoomId | null;
   selfPlayerId: PlayerId | null;
   hostPlayerId: PlayerId;
+  /** The library set the joined room plays; empty when not connected. */
+  setId: string;
   players: Player[];
   cards: CardInstance[];
   stacks: CardStack[];
@@ -57,6 +61,8 @@ interface MultiplayerValue extends TableCommands {
   createRoom(request: CreateRoomRequest): Promise<void>;
   joinRoom(request: JoinRoomRequest): Promise<void>;
   leaveRoom(): Promise<void>;
+  /** Listens for library edits to the room's set. Returns an unsubscribe function. */
+  subscribeCatalogChanges(listener: (event: CatalogChangedEvent) => void): () => void;
 }
 
 const MultiplayerContext = createContext<MultiplayerValue | null>(null);
@@ -77,7 +83,8 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
   const [invitedRoomId, setInvitedRoomId] = useState<RoomId | null>(initialRoomId);
   const [selfPlayerId, setSelfPlayerId] = useState<PlayerId | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const { players, cards, stacks, hostPlayerId, syncRoom, resetSync } = useRoomSync();
+  const { players, cards, stacks, hostPlayerId, setId, syncRoom, resetSync } = useRoomSync();
+  const catalogListeners = useRef(new Set<(event: CatalogChangedEvent) => void>());
   const commands = useTableCommands(roomRef);
 
   const resetSession = useCallback(() => {
@@ -93,6 +100,10 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       roomRef.current = room;
 
       syncRoom(room);
+      room.onMessage(ROOM_EVENTS.CATALOG_CHANGED, (event: CatalogChangedEvent) => {
+        if (roomRef.current !== room) return;
+        for (const listener of catalogListeners.current) listener(event);
+      });
       room.onLeave(() => {
         if (roomRef.current !== room) return;
         // The seat is gone for good by now: the SDK retries transient drops on
@@ -200,6 +211,16 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
     };
   }, [attachRoom, client, initialRoomId]);
 
+  const subscribeCatalogChanges = useCallback(
+    (listener: (event: CatalogChangedEvent) => void) => {
+      catalogListeners.current.add(listener);
+      return () => {
+        catalogListeners.current.delete(listener);
+      };
+    },
+    [],
+  );
+
   const value = useMemo<MultiplayerValue>(
     () => ({
       ...commands,
@@ -208,6 +229,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       invitedRoomId,
       selfPlayerId,
       hostPlayerId,
+      setId,
       players,
       cards,
       stacks,
@@ -215,6 +237,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       createRoom,
       joinRoom,
       leaveRoom,
+      subscribeCatalogChanges,
     }),
     [
       commands,
@@ -223,6 +246,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       invitedRoomId,
       selfPlayerId,
       hostPlayerId,
+      setId,
       players,
       cards,
       stacks,
@@ -230,6 +254,7 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
       createRoom,
       joinRoom,
       leaveRoom,
+      subscribeCatalogChanges,
     ],
   );
 
