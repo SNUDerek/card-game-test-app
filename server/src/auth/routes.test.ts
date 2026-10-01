@@ -1,19 +1,32 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { Server } from "node:http";
-import express from "express";
+import express, { type Express } from "express";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDatabase, type WorkspaceDatabase } from "../db/connection.js";
+import { ImageRepository } from "../db/images.js";
+import { ImageStore } from "../library/image-store.js";
+import { WorkspaceService } from "../library/workspace-service.js";
+import { registerRoomRoutes } from "../http/room-routes.js";
+import { registerWorkspaceRoutes } from "../http/workspace-routes.js";
 import { UserRepository } from "./users.js";
 import { SessionRepository } from "./sessions.js";
 import { registerAuthRoutes } from "./routes.js";
 import { requireUser } from "./middleware.js";
 
 let server: Server | undefined;
+let app: Express;
 let database: WorkspaceDatabase;
 let baseUrl: string;
+let dataDirectory: string;
 
 beforeEach(async () => {
   database = openDatabase(":memory:");
-  const app = express();
+  dataDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "card-table-auth-"));
+  const images = new ImageStore(new ImageRepository(database), path.join(dataDirectory, "images"));
+  const workspace = new WorkspaceService(database, images);
+  app = express();
   const sessions = new SessionRepository(database);
   registerAuthRoutes(app, {
     users: new UserRepository(database),
@@ -23,10 +36,11 @@ beforeEach(async () => {
     cookieSecure: false,
   });
   app.get("/health", (_req, res) => res.json({ ok: true }));
-  app.use("/api", requireUser(sessions));
-  app.use("/images", requireUser(sessions));
-  app.get("/api/cards", (_req, res) => res.json({ cards: [] }));
-  app.get("/images/example", (_req, res) => res.send("image"));
+  // Same order as index.ts: auth routes, then the guards, then every protected route.
+  app.use("/api", requireUser(sessions, false));
+  app.use("/images", requireUser(sessions, false));
+  registerRoomRoutes(app, { workspace });
+  registerWorkspaceRoutes(app, workspace, images);
   server = await new Promise<Server>((resolve) => {
     const running = app.listen(0, () => resolve(running));
   });
@@ -37,6 +51,7 @@ beforeEach(async () => {
 afterEach(async () => {
   if (server) await new Promise<void>((resolve, reject) => server!.close((error) => error ? reject(error) : resolve()));
   database.close();
+  fs.rmSync(dataDirectory, { recursive: true, force: true });
   server = undefined;
 });
 
@@ -116,14 +131,14 @@ describe("account routes", () => {
   it("leaves only health, login, register, and me checks public", async () => {
     expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
 
-    const stack = (server as unknown as { _events: { request: { router: { stack: Array<{
+    const stack = (app.router as unknown as { stack: Array<{
       route?: { path: string; methods: Record<string, boolean> };
-    }> } } } })._events.request.router.stack;
+    }> }).stack;
     const publicRoutes = new Set(["POST /api/auth/login", "POST /api/auth/register", "GET /health"]);
     const routes = stack.flatMap((layer) => layer.route
       ? Object.keys(layer.route.methods).map((method) => ({ method: method.toUpperCase(), path: layer.route!.path }))
       : []);
-    expect(routes.length).toBeGreaterThan(5);
+    expect(routes.length).toBeGreaterThan(20);
     for (const route of routes) {
       if (publicRoutes.has(`${route.method} ${route.path}`)) continue;
       const response = await fetch(`${baseUrl}${route.path}`, { method: route.method });

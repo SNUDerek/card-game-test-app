@@ -18,7 +18,7 @@ export function findRequestUser(
   return result ? { user: result.user, token, slid: result.slid } : undefined;
 }
 
-export function requireUser(sessions: SessionRepository, cookieSecure = false) {
+export function requireUser(sessions: SessionRepository, cookieSecure: boolean) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const auth = findRequestUser(req.headers.cookie, sessions);
     if (!auth) {
