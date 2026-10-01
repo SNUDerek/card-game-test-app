@@ -4,7 +4,10 @@ Accounts, database-backed card **sets** and **decks**, temporary rooms, and expo
 
 “Persistent” refers to the workspace library and accounts, not tabletop sessions.
 
-Status: **proposal**. Nothing here is built yet.
+Status: **partly built.** The server side of phases 0–4 is merged (PRs #20–#23); most
+client screens and room lifecycle work are not. For current coverage, open issues, and
+the remaining task breakdown, see [persistent-workspace-review.md](persistent-workspace-review.md).
+That review supersedes the status notes in §8 below.
 
 ---
 
@@ -597,7 +600,11 @@ largest and could split into server/API and editor UI. Phase 3 could split into
 
 ## 8. Parallel work plan
 
-Phases 0 and 1 (DB foundation and accounts) are in progress. This section lists which
+*Historical.* This section records how phases 0–4 were split. Its status notes are out
+of date; see [persistent-workspace-review.md §9](persistent-workspace-review.md) for the
+current plan.
+
+Phases 0 and 1 (DB foundation and accounts) were in progress when this was written. This section lists which
 remaining work can proceed alongside them and which must wait.
 
 ### 8.1 Can start now (no DB or auth needed)
