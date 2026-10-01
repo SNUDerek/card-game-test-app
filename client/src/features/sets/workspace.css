@@ -197,58 +197,15 @@
   color: #64748b;
 }
 
-.editor-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
-  display: grid;
-  place-items: center;
-  padding: 1rem;
-  background: #0008;
-}
-
-.card-editor {
-  width: min(750px, 100%);
-  max-height: calc(100vh - 2rem);
-  overflow: auto;
-  padding: 1.25rem;
-  border-radius: 0.6rem;
-  background: white;
-}
-
-.card-editor header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-editor h2 {
+.card-tile-body {
+  display: -webkit-box;
   margin: 0;
-}
-
-.editor-layout {
-  display: grid;
-  grid-template-columns: 1fr 220px;
-  gap: 1.25rem;
-}
-
-.editor-form {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.editor-form textarea {
-  min-height: 7rem;
-  resize: vertical;
-}
-
-.card-preview {
   overflow: hidden;
-}
-
-.card-preview p {
-  margin-top: 0;
-  font-weight: 600;
+  color: #64748b;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .deck-card-list {

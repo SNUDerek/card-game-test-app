@@ -9,6 +9,7 @@ services:
     environment:
       PORT: ${SERVER_PORT:-2567}
       DATA_DIR: /app/data
+      SAMPLE_CARDS_DIR: /app/cards
       AUTH_PEPPER: ${AUTH_PEPPER:?Set AUTH_PEPPER in .env}
       SIGNUP_PASSCODE: ${SIGNUP_PASSCODE:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
@@ -16,7 +17,7 @@ services:
       TRUST_CLOUDFLARE_IP: ${TRUST_CLOUDFLARE_IP:-false}
       ROOM_IDLE_TIMEOUT_MINUTES: ${ROOM_IDLE_TIMEOUT_MINUTES:-120}
     volumes:
-      # Only the importer reads this (`cards:import`); the table uses the library.
+      # Seeds a fresh workspace; the manual importer can also read this directory.
       - ./cards:/app/cards:ro
       - workspace-data:/app/data
     restart: unless-stopped

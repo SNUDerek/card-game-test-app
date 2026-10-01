@@ -54,8 +54,7 @@ origin, the same arrangement Docker uses.
 The database and uploaded images go in `./data` (override with `DATA_DIR`).
 
 Open [http://localhost:5173](http://localhost:5173), register with the signup code
-(`invite-code` above), then import a set (see [Adding cards](#adding-cards)) so there is
-something to play.
+(`invite-code` above), and use the automatically seeded Sample Set to start a room.
 
 Other useful scripts:
 
@@ -91,6 +90,7 @@ Set these in `.env` (Compose reads it automatically):
 | `TRUST_PROXY` | `1` | Trusted reverse-proxy hop count for client IP/rate limiting |
 | `TRUST_CLOUDFLARE_IP` | `false` | Rate-limit by `CF-Connecting-IP`; only when every request comes through Cloudflare |
 | `ROOM_IDLE_TIMEOUT_MINUTES` | `120` | Minutes without a table change before a room ends; members get a 5-minute warning |
+| `SAMPLE_CARDS_DIR` | `./cards` | Folder imported as Sample Set when the workspace has no sets; empty disables seeding |
 
 So to fit a host that only exposes 9000–9999:
 
@@ -138,7 +138,12 @@ does not hide what you type.
 
 ## Adding cards
 
-Cards live in the workspace library. Import a folder of card files as a new set:
+Cards live in the workspace library. A fresh workspace automatically imports the
+bundled `cards/` folder as **Sample Set**. Set `SAMPLE_CARDS_DIR` to another folder,
+or to an empty value to disable this startup seed. Existing workspaces, including
+ones containing only archived sets, are never seeded again.
+
+To add another independent set manually, import a folder of card files:
 
 ```bash
 npm run cards:import -w server -- ./cards "Skirmish v1"
@@ -150,7 +155,7 @@ Each import creates a new, independent set. Re-importing the same folder creates
 second set rather than updating the first. Imported artwork is stored by content
 hash under `DATA_DIR/images`.
 
-You can also build sets in the browser: **Manage card sets** in the lobby opens the set
+You can also build sets in the browser: **Card sets** in the lobby opens the set
 library, where you can create, rename, archive, unarchive, fork, and export sets
 (export downloads a ZIP of `set.json` plus artwork). A set's **Cards** tab provides
 search, type filtering, image upload and reuse, and a live card preview. Its **Decks**

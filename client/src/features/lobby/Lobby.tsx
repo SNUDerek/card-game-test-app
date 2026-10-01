@@ -59,10 +59,16 @@ export function Lobby() {
 
   return (
     <main className="lobby">
-      <form className="lobby-card" onSubmit={onSubmit}>
-        <h1>Card Table</h1>
-        <p className="lobby-account">Signed in as {user?.displayName}</p>
-        <p><Link href="/sets">Manage card sets</Link></p>
+      <header className="lobby-header">
+        <p className="lobby-account">Signed in as <strong>{user?.displayName}</strong></p>
+        <nav aria-label="Workspace actions">
+          <Link className="lobby-button" href="/sets">Card sets</Link>
+          <button className="lobby-sign-out" type="button" onClick={() => void logout()}>Sign out</button>
+        </nav>
+      </header>
+      <div className="lobby-content">
+        <form className="lobby-card" onSubmit={onSubmit}>
+          <h1>Card Table</h1>
 
         <div className="lobby-modes" role="group" aria-label="Room action">
           <button
@@ -90,6 +96,9 @@ export function Lobby() {
               {sets.length === 0 && <option value="">No sets available</option>}
               {sets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}
             </select>
+            {sets.length === 0 && !setsError && (
+              <p className="lobby-empty-hint">Create a <Link href="/sets">card set</Link> before opening a room.</p>
+            )}
             <label htmlFor="lobby-room-name">Room name</label>
             <input id="lobby-room-name" value={roomName} maxLength={100}
               onChange={(event) => setRoomName(event.target.value)} />
@@ -112,20 +121,19 @@ export function Lobby() {
           {isConnecting ? "Connecting…" : mode === "create" ? "Create room" : "Join room"}
         </button>
 
-        <button className="lobby-sign-out" type="button" onClick={() => void logout()}>Sign out</button>
-
         {connectionError && (
           <p className="lobby-error" role="alert">
             {connectionError}
           </p>
         )}
         {setsError && <p className="lobby-error" role="alert">{setsError}</p>}
-      </form>
-      <RoomBrowser
-        disabled={isConnecting}
-        onJoin={(roomId) => void joinRoom({ roomId }).catch(() => undefined)}
-        onEnd={endRoom}
-      />
+        </form>
+        <RoomBrowser
+          disabled={isConnecting}
+          onJoin={(roomId) => void joinRoom({ roomId }).catch(() => undefined)}
+          onEnd={endRoom}
+        />
+      </div>
     </main>
   );
 }

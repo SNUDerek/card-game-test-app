@@ -14,6 +14,7 @@ import { CARD_HEIGHT, CARD_WIDTH, CardRenderer } from "../../../cards/CardRender
 import { ApiConflictError, apiRequest } from "../../../api/client";
 import { errorMessage } from "../errors";
 import { prepareCardImage } from "./prepare-card-image";
+import "./CardEditor.css";
 
 const ImagesResponseSchema = z.object({ images: z.array(LibraryImageSchema) });
 const UploadResponseSchema = z.object({ image: z.object({ id: z.string() }) });
@@ -116,11 +117,16 @@ export function CardEditor({
   }
 
   return (
-    <div className="editor-backdrop" role="presentation">
+    <div className="editor-backdrop" role="presentation"
+      onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}>
       <form className="card-editor" aria-label={card ? "Edit card" : "New card"}
         onSubmit={(event) => void save(event)}>
         <header>
-          <h2>{card ? "Edit card" : "New card"}</h2>
+          <div>
+            <h2>{card ? "Edit card" : "New card"}</h2>
+            {card && <p className="editor-scope-note">Changes apply to every copy of this card in the set.</p>}
+          </div>
           <button type="button" onClick={onClose}>Close</button>
         </header>
         {error && <p className="workspace-error" role="alert">{error}</p>}
