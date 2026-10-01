@@ -174,8 +174,8 @@ Each card is two files with the **same filename stem** (e.g., `fireball.jpg` and
      Library cards get new IDs; the file's `id` is kept as `metadata.sourceId`.
    - **`type`**: The card type (e.g., "spell", "item", "creature").
    - **`body`**: The text shown on the bottom half of the card.
-   - *Optional*: Any additional fields are preserved in the card's `metadata`. The
-     display name comes from the filename unless the JSON has a `name` field.
+   - *Optional*: Any additional fields are preserved in the card's `metadata`.
+   - The display name comes from the filename: `red_potion.png` becomes "Red Potion".
 
 ## Usage guide
 
