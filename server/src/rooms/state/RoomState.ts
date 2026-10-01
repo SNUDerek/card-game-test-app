@@ -62,12 +62,6 @@ export const RoomState = schema(
     stacks: t.map(CardStackState),
     players: t.map(PlayerState),
     locks: t.map(ObjectLockState),
-    /**
-     * Canonical room host. Clients decide whether they are host by comparing
-     * their own PlayerId against this; there is no per-player host flag.
-     * Empty only before the first player joins.
-     */
-    hostPlayerId: t.string().default(""),
     /** The library set this table plays. Fixed for the room's life. */
     setId: t.string().default(""),
     /** Editable room label; mirrors the room metadata used by the room browser. */

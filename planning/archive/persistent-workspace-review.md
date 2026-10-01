@@ -1,4 +1,4 @@
-# Persistent Workspace Review
+# Persistent Workspace Review (Archived)
 
 Review of the codebase after the phases in [persistent-workspace.md](persistent-workspace.md)
 were merged (PRs #20–#23, up to `1c70925`). Covers feature coverage, test coverage,
@@ -7,6 +7,9 @@ outstanding issues, unclean code, and refactoring targets.
 Status at review time: `npm run typecheck` is clean; `npm test` passes (server 209,
 client 128). A stale local `node_modules` was missing `better-sqlite3` and `fflate`;
 `npm install` fixed it.
+
+This review is preserved as historical context. Its three-wave follow-up plan was
+completed through PRs #24–#31 and the Wave 3 cleanup that archived this document.
 
 ---
 

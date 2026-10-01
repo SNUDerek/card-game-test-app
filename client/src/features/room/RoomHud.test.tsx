@@ -11,7 +11,6 @@ const multiplayer = {
   roomName: "Friday game",
   roomDescription: "Bring snacks",
   players: [] as Player[],
-  hostPlayerId: "",
   selfPlayerId: null as string | null,
   leaveRoom,
   endRoom,
@@ -39,7 +38,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   multiplayer.roomId = "KM7XPQ3D";
   multiplayer.players = [alice, bob];
-  multiplayer.hostPlayerId = "p-alice";
   multiplayer.selfPlayerId = "p-bob";
   boardImage.isExporting = false;
   boardImage.error = null;
@@ -50,18 +48,11 @@ function playerRow(name: string) {
 }
 
 describe("RoomHud", () => {
-  it("marks the host by comparing ids, wherever the host sits in the roster", () => {
-    const { rerender } = render(<RoomHud />);
+  it("marks the current player without assigning a room host", () => {
+    render(<RoomHud />);
 
-    expect(within(playerRow("Alice")).getByText("host")).toBeInTheDocument();
-    expect(within(playerRow("Bob")).queryByText("host")).not.toBeInTheDocument();
     expect(within(playerRow("Bob")).getByText("you")).toBeInTheDocument();
-
-    multiplayer.hostPlayerId = "p-bob";
-    rerender(<RoomHud />);
-
-    expect(within(playerRow("Bob")).getByText("host")).toBeInTheDocument();
-    expect(within(playerRow("Alice")).queryByText("host")).not.toBeInTheDocument();
+    expect(screen.queryByText("host")).not.toBeInTheDocument();
   });
 
   it("shows a disconnected player as reconnecting", () => {

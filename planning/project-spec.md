@@ -1,7 +1,7 @@
 # Card Game Prototyping Table
 
 > Target specification for the shared-workspace iteration; these requirements are not all
-> implemented yet. See [Persistent Workspace Plan](persistent-workspace.md) for delivery
+> implemented yet. See the archived [Persistent Workspace Plan](archive/persistent-workspace.md) for delivery
 > phases and [Data Models](data-models.md) for protocol details.
 
 ## 1. Project Overview
@@ -1012,7 +1012,7 @@ Build on the existing tabletop MVP. The next delivery includes:
 - Set ZIP export and board PNG download.
 - Docker volume, TLS setup, backup/restore documentation.
 
-Follow the phase order in [Persistent Workspace Plan](persistent-workspace.md): database,
+Follow the phase order in the archived [Persistent Workspace Plan](archive/persistent-workspace.md): database,
 accounts, sets/cards with usage locks, decks/forks, room UX/exports, deployment documentation.
 
 Deferred: cursor presence, pen/text annotations, hands, zones, dice, tokens, generator
@@ -1070,7 +1070,7 @@ This should remain a relatively small application whose complexity grows primari
 # 27. Follow-Up Specification
 
 The [data-models.md](data-models.md) specification defines the domain model and multiplayer
-protocol. The [workspace plan](persistent-workspace.md) supplies the schema sketch and
+protocol. The archived [workspace plan](archive/persistent-workspace.md) supplies the schema sketch and
 implementation phases. These documents describe the target, not implementation status.
 
 That document covers:

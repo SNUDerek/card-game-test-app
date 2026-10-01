@@ -44,10 +44,7 @@ describe("TableRoom bound to a library set", () => {
           deckLookup: { getDeck: (id: string) => new DeckRepository(db).require(id) },
           displayNameFor: (id: string) => (id === userId ? "Alice" : undefined),
           reconnectionGraceSeconds: 0,
-          authenticate: (_cookie, options) => {
-            const displayName = String((options as { displayName?: string })?.displayName ?? "").trim();
-            return displayName ? { id: `user-${displayName}`, username: displayName, displayName } : undefined;
-          },
+          authenticate: () => ({ id: userId, username: "alice", displayName: "Alice" }),
         }),
       },
     });

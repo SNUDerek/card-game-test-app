@@ -1,5 +1,5 @@
 import type { Room } from "@colyseus/sdk";
-import type { CardInstance, CardStack, Player, PlayerId } from "@card-table/shared";
+import type { CardInstance, CardStack, Player } from "@card-table/shared";
 
 /**
  * The room state as the client sees it: Colyseus schema instances exposing the
@@ -9,7 +9,6 @@ export interface ClientRoomState {
   cards: Map<string, CardInstance>;
   stacks: Map<string, CardStack>;
   players: Map<string, Player>;
-  hostPlayerId: PlayerId;
   /** The library set this table plays. */
   setId: string;
   name: string;

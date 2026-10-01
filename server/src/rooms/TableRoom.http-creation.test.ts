@@ -12,10 +12,7 @@ describe("TableRoom HTTP-only creation", () => {
     colyseus = await boot({ rooms: { table: defineRoom(TableRoom, {
       requireHttpCreation: true,
       creationRegistry: registry,
-      authenticate: (_cookie, options) => {
-        const displayName = String((options as { displayName?: string })?.displayName ?? "").trim();
-        return displayName ? { id: `user-${displayName}`, username: displayName, displayName } : undefined;
-      },
+      authenticate: () => ({ id: "user-alice", username: "alice", displayName: "Alice" }),
     }) } });
   });
 

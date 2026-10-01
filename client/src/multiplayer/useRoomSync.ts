@@ -1,12 +1,11 @@
 import { useCallback, useState } from "react";
-import type { CardInstance, CardStack, Player, PlayerId } from "@card-table/shared";
+import type { CardInstance, CardStack, Player } from "@card-table/shared";
 import type { ClientRoomState, TableRoom } from "./room";
 
 export interface RoomSync {
   players: Player[];
   cards: CardInstance[];
   stacks: CardStack[];
-  hostPlayerId: PlayerId;
   /** The room's library set; empty until the first state arrives. */
   setId: string;
   roomName: string;
@@ -28,7 +27,6 @@ export function useRoomSync(): RoomSync {
   const [players, setPlayers] = useState<Player[]>([]);
   const [cards, setCards] = useState<CardInstance[]>([]);
   const [stacks, setStacks] = useState<CardStack[]>([]);
-  const [hostPlayerId, setHostPlayerId] = useState<PlayerId>("");
   const [setId, setSetId] = useState("");
   const [roomName, setRoomName] = useState("");
   const [roomDescription, setRoomDescription] = useState("");
@@ -74,7 +72,6 @@ export function useRoomSync(): RoomSync {
           }))
           .sort((a, b) => a.joinOrder - b.joinOrder),
       );
-      setHostPlayerId(state.hostPlayerId);
       setSetId(state.setId);
       setRoomName(state.name ?? "");
       setRoomDescription(state.description ?? "");
@@ -88,11 +85,10 @@ export function useRoomSync(): RoomSync {
     setPlayers([]);
     setCards([]);
     setStacks([]);
-    setHostPlayerId("");
     setSetId("");
     setRoomName("");
     setRoomDescription("");
   }, []);
 
-  return { players, cards, stacks, hostPlayerId, setId, roomName, roomDescription, syncRoom, resetSync };
+  return { players, cards, stacks, setId, roomName, roomDescription, syncRoom, resetSync };
 }

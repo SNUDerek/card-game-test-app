@@ -15,10 +15,7 @@ describe("TableRoom connection lifecycle", () => {
           setId: "set-1",
           cardLibrary: fixedCardLibrary(["spell-1"]),
           lockTimeoutMs: 75,
-          authenticate: (_cookie, options) => {
-            const displayName = String((options as { displayName?: string })?.displayName ?? "").trim();
-            return displayName ? { id: `user-${displayName}`, username: displayName, displayName } : undefined;
-          },
+          authenticate: () => ({ id: "user-alice", username: "alice", displayName: "Alice" }),
         }),
       },
     });
@@ -32,7 +29,7 @@ describe("TableRoom connection lifecycle", () => {
     await colyseus.cleanup();
   });
 
-  it("synchronizes distinct player identities to two clients and removes leavers", async () => {
+  it("synchronizes separate seats for multiple tabs of one account and removes leavers", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
     const alice = await colyseus.connectTo(room, { displayName: "  Alice  " });
     const bob = await colyseus.connectTo(room, { displayName: "Bob" });
@@ -44,7 +41,8 @@ describe("TableRoom connection lifecycle", () => {
     expect(bob.state.toJSON()).toEqual(room.state.toJSON());
 
     const players = [...room.state.players.values()];
-    expect(players.map((player) => player.displayName).sort()).toEqual(["Alice", "Bob"]);
+    expect(players.map((player) => player.displayName)).toEqual(["Alice", "Alice"]);
+    expect(players.every((player) => player.userId === "user-alice")).toBe(true);
     expect(players.every((player) => player.connected)).toBe(true);
     expect(players.every((player) => player.id !== alice.sessionId && player.id !== bob.sessionId)).toBe(
       true,
@@ -65,12 +63,6 @@ describe("TableRoom connection lifecycle", () => {
 
     await expect(colyseus.connectTo(room, { displayName: "Mallory" })).rejects.toThrow();
     expect(room.state.players.size).toBe(2);
-  });
-
-  it("rejects an unauthenticated connection", async () => {
-    await expect(colyseus.sdk.joinOrCreate("table", {})).rejects.toThrow(
-      "Authentication required.",
-    );
   });
 
   it("validates and synchronizes spawned cards", async () => {

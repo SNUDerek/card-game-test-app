@@ -4,10 +4,9 @@ Accounts, database-backed card **sets** and **decks**, temporary rooms, and expo
 
 “Persistent” refers to the workspace library and accounts, not tabletop sessions.
 
-Status: **partly built.** The server side of phases 0–4 is merged (PRs #20–#23); most
-client screens and room lifecycle work are not. For current coverage, open issues, and
-the remaining task breakdown, see [persistent-workspace-review.md](persistent-workspace-review.md).
-That review supersedes the status notes in §8 below.
+Status: **implemented.** This historical plan is archived after completion of the
+persistent-workspace delivery waves. The original status notes below are retained as
+planning history.
 
 ---
 
