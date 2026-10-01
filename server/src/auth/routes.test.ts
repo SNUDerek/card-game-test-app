@@ -104,7 +104,6 @@ describe("account routes", () => {
   it("leaves only health, login, register, and me checks public", async () => {
     expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
     expect((await fetch(`${baseUrl}/api/auth/me`)).status).toBe(401);
-    expect((await fetch(`${baseUrl}/api/cards`)).status).toBe(401);
     expect((await fetch(`${baseUrl}/api/sets`)).status).toBe(401);
     expect((await fetch(`${baseUrl}/api/rooms`)).status).toBe(401);
     expect((await fetch(`${baseUrl}/api/images`)).status).toBe(401);

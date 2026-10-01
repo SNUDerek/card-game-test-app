@@ -68,6 +68,8 @@ export const RoomState = schema(
      * Empty only before the first player joins.
      */
     hostPlayerId: t.string().default(""),
+    /** The library set this table plays. Fixed for the room's life. */
+    setId: t.string().default(""),
   },
   "RoomState",
 );

@@ -15,13 +15,16 @@ import {
   SetHoverPayloadSchema,
   TABLE_COMMANDS,
   ROOM_COMMANDS,
+  ROOM_EVENTS,
+  type CatalogChangedEvent,
   type CurrentUser,
+  type RoomEndedEvent,
   type PlayerId,
   type SessionResult,
   type SetHoverResult,
 } from "@card-table/shared";
 import { PlayerState, RoomState } from "./state/RoomState.js";
-import { spawnCard } from "../commands/card/spawn-card.js";
+import { spawnCard, type CardDefinitionLookup } from "../commands/card/spawn-card.js";
 import { spawnDeck } from "../commands/deck/spawn-deck.js";
 import { DomainCommandError } from "../commands/errors.js";
 import {
@@ -48,12 +51,18 @@ import {
   DEFAULT_COMMAND_RATE_LIMIT,
   type RateLimitOptions,
 } from "./rate-limit.js";
-import type { CardLibrary, LibraryChange } from "../library/card-library.js";
+import type { LibraryChange } from "../library/card-library.js";
 import type { SetUsageRegistry } from "../library/set-usage.js";
 import type { RoomCreationRegistry } from "./room-creation.js";
 
+/** The part of `CardLibrary` a room uses: membership checks and change events. */
+export interface RoomCardLibrary {
+  activeCardIds(setId: string): CardDefinitionLookup;
+  on(event: "changed", listener: (change: LibraryChange) => void): unknown;
+  off(event: "changed", listener: (change: LibraryChange) => void): unknown;
+}
+
 export interface TableRoomOptions {
-  cardDefinitionIds?: string[];
   lockTimeoutMs?: number;
   /** Hard cap on joined and reconnecting players in this room. */
   maxClients?: number;
@@ -63,11 +72,14 @@ export interface TableRoomOptions {
   reconnectionGraceSeconds?: number;
   /** Per-connection command budget. Defaults to DEFAULT_COMMAND_RATE_LIMIT. */
   commandRateLimit?: RateLimitOptions;
+  /** The library set this table plays. Spawns are limited to its active cards. */
   setId?: string;
   setName?: string;
   name?: string;
   description?: string;
-  cardLibrary?: CardLibrary;
+  cardLibrary?: RoomCardLibrary;
+  /** Names the editor in CATALOG_CHANGED notices. Supplied by the server bootstrap. */
+  displayNameFor?: (userId: string) => string | undefined;
   usageRegistry?: SetUsageRegistry;
   creationRegistry?: RoomCreationRegistry;
   requireHttpCreation?: boolean;
@@ -89,17 +101,24 @@ export const DEFAULT_MAX_CLIENTS_PER_ROOM = 16;
 
 export class TableRoom extends Room<{ state: RoomState }> {
   private readonly playerIdBySessionId = new Map<string, PlayerId>();
-  private cardDefinitionIds: { has(id: string): boolean } = new Set();
+  private cardDefinitionIds: CardDefinitionLookup = new Set<string>();
   private lockTimeoutMs = DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
   private authenticate: (cookieHeader: string | null, joinOptions: unknown) => CurrentUser | undefined = () => undefined;
   private reconnectionGraceSeconds = DEFAULT_RECONNECTION_GRACE_SECONDS;
   private joinCount = 0;
   private rateLimiter = new CommandRateLimiter();
   private setId: string | undefined;
-  private cardLibrary: CardLibrary | undefined;
+  private cardLibrary: RoomCardLibrary | undefined;
   private usageRegistry: SetUsageRegistry | undefined;
+  private displayNameFor: (userId: string) => string | undefined = () => undefined;
   private readonly onLibraryChanged = (change: LibraryChange) => {
-    if (change.setId === this.setId) this.broadcast("CATALOG_CHANGED", change);
+    if (change.setId !== this.setId) return;
+    const event: CatalogChangedEvent = {
+      setId: change.setId,
+      changedCardIds: change.cardIds,
+      editorName: change.userId ? this.displayNameFor(change.userId) ?? null : null,
+    };
+    this.broadcast(ROOM_EVENTS.CATALOG_CHANGED, event);
   };
 
   /**
@@ -161,11 +180,14 @@ export class TableRoom extends Room<{ state: RoomState }> {
     }
     this.setState(new RoomState());
     this.setId = options.setId;
+    this.state.setId = options.setId ?? "";
     this.cardLibrary = options.cardLibrary;
     this.usageRegistry = options.usageRegistry;
-    this.cardDefinitionIds = options.setId && options.cardLibrary
-      ? options.cardLibrary.activeCardIds(options.setId)
-      : new Set(options.cardDefinitionIds ?? []);
+    this.displayNameFor = options.displayNameFor ?? (() => undefined);
+    // A room with no set can hold no cards; only tests create one.
+    if (options.setId && options.cardLibrary) {
+      this.cardDefinitionIds = options.cardLibrary.activeCardIds(options.setId);
+    }
     this.lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
     this.maxClients = options.maxClients ?? DEFAULT_MAX_CLIENTS_PER_ROOM;
     this.authenticate = options.authenticate ?? (() => undefined);
@@ -269,7 +291,8 @@ export class TableRoom extends Room<{ state: RoomState }> {
   }
 
   async endRoom(editorName: string): Promise<void> {
-    this.broadcast("ROOM_ENDED", { message: `Room ended by ${editorName}.` });
+    const event: RoomEndedEvent = { message: `Room ended by ${editorName}.` };
+    this.broadcast(ROOM_EVENTS.ROOM_ENDED, event);
     await this.disconnect(4000);
   }
 

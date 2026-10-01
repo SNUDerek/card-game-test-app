@@ -10,7 +10,7 @@ import type { AuthenticatedRequest } from "../auth/middleware.js";
 import { buildSetExportArchive, setExportFileName } from "../library/export-set.js";
 import { DeckGenerationError, generateDeck } from "../library/generate-deck.js";
 import type { ImageStore } from "../library/image-store.js";
-import type { LibraryCard } from "@card-table/shared";
+import { cardImageUrl, type CardDefinition, type LibraryCard } from "@card-table/shared";
 import type { WorkspaceService } from "../library/workspace-service.js";
 import { inspectCardImage } from "../library/image-store.js";
 import { HttpError } from "./errors.js";
@@ -33,7 +33,7 @@ function userId(req: Request): string {
   return (req as AuthenticatedRequest).user.id;
 }
 
-const cardResponse = (card: LibraryCard) => ({ ...card, imageUrl: `/images/${card.imageId}` });
+const cardResponse = (card: LibraryCard): CardDefinition => ({ ...card, imageUrl: cardImageUrl(card.imageId) });
 
 export function registerWorkspaceRoutes(
   app: Application,
@@ -120,7 +120,7 @@ export function registerWorkspaceRoutes(
     const declared = req.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase();
     if (declared !== inspected.mime) throw new HttpError(400, "Image bytes do not match the Content-Type.");
     const image = images.save(req.body, userId(req));
-    res.status(201).json({ image: { ...image, imageUrl: `/images/${image.id}` } });
+    res.status(201).json({ image: { ...image, imageUrl: cardImageUrl(image.id) } });
   });
   app.get("/images/:id", (req, res) => {
     const image = images.find(parse(ImageParams, req.params).id);
