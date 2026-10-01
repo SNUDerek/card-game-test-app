@@ -1,15 +1,21 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Player } from "@card-table/shared";
 import { RoomHud } from "./RoomHud";
 
 const leaveRoom = vi.fn().mockResolvedValue(undefined);
+const endRoom = vi.fn().mockResolvedValue(undefined);
+const updateRoomDetails = vi.fn().mockResolvedValue(undefined);
 const multiplayer = {
   roomId: "KM7XPQ3D" as string | null,
+  roomName: "Friday game",
+  roomDescription: "Bring snacks",
   players: [] as Player[],
   hostPlayerId: "",
   selfPlayerId: null as string | null,
   leaveRoom,
+  endRoom,
+  updateRoomDetails,
 };
 
 vi.mock("../../multiplayer/MultiplayerContext", () => ({
@@ -102,5 +108,60 @@ describe("RoomHud", () => {
     boardImage.error = "2 card images could not be loaded.";
     rerender(<RoomHud />);
     expect(screen.getByRole("alert")).toHaveTextContent("2 card images could not be loaded.");
+  });
+
+  it("shows the room name and description, and saves edits", async () => {
+    render(<RoomHud />);
+    expect(screen.getByText("Friday game")).toBeInTheDocument();
+    expect(screen.getByText("Bring snacks")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit details" }));
+    fireEvent.change(screen.getByLabelText("Room name"), { target: { value: "Saturday game" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(updateRoomDetails).toHaveBeenCalledWith({
+      name: "Saturday game", description: "Bring snacks",
+    }));
+  });
+
+  it("confirms before ending the room", async () => {
+    render(<RoomHud />);
+    fireEvent.click(screen.getByRole("button", { name: "End room" }));
+    expect(endRoom).not.toHaveBeenCalled();
+
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "End room" }));
+    await waitFor(() => expect(endRoom).toHaveBeenCalledWith("KM7XPQ3D"));
+  });
+
+  it("warns the last person before leaving and offers a board image", () => {
+    multiplayer.players = [{ ...alice, connected: false }, bob];
+    render(<RoomHud />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Leave room" }));
+    expect(leaveRoom).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Download board image" }));
+    expect(boardImage.download).toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Leave room" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Leave" }));
+    expect(leaveRoom).toHaveBeenCalled();
+  });
+
+  it("asks the browser to confirm closing only when alone", () => {
+    const { unmount } = render(<RoomHud />);
+    const withCompany = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(withCompany);
+    expect(withCompany.defaultPrevented).toBe(false);
+    unmount();
+
+    multiplayer.players = [bob];
+    render(<RoomHud />);
+    const alone = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(alone);
+    expect(alone.defaultPrevented).toBe(true);
   });
 });

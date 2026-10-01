@@ -68,4 +68,33 @@ describe("MultiplayerProvider routing", () => {
     expect(sdk.reconnect).toHaveBeenCalledOnce();
     expect(room.leave).not.toHaveBeenCalled();
   });
+
+  it("reports who ended the room instead of a generic disconnect", async () => {
+    window.history.replaceState({}, "", "/");
+    const room = fakeRoom("ROOM1", "ROOM1:token");
+    sdk.joinById.mockResolvedValue(room);
+    const { result } = renderHook(() => useMultiplayer(), { wrapper });
+    await act(() => result.current.joinRoom({ roomId: "ROOM1" }));
+
+    const handlers = new Map(room.onMessage.mock.calls.map(([name, handler]) => [name, handler]));
+    act(() => handlers.get("ROOM_ENDED")({ message: "Room ended by Alice." }));
+    act(() => room.onLeave.mock.calls[0][0]());
+
+    expect(result.current.status).toBe("disconnected");
+    expect(result.current.connectionError).toBe("Room ended by Alice.");
+  });
+
+  it("tracks the idle warning until activity resumes", async () => {
+    window.history.replaceState({}, "", "/");
+    const room = fakeRoom("ROOM1", "ROOM1:token");
+    sdk.joinById.mockResolvedValue(room);
+    const { result } = renderHook(() => useMultiplayer(), { wrapper });
+    await act(() => result.current.joinRoom({ roomId: "ROOM1" }));
+
+    const handlers = new Map(room.onMessage.mock.calls.map(([name, handler]) => [name, handler]));
+    act(() => handlers.get("ROOM_IDLE_WARNING")({ endsAt: 12345 }));
+    expect(result.current.idleEndsAt).toBe(12345);
+    act(() => handlers.get("ROOM_IDLE_RESUMED")({}));
+    expect(result.current.idleEndsAt).toBeNull();
+  });
 });
