@@ -1,10 +1,11 @@
-import type { Application, Request, Response } from "express";
+import type { Application, Request } from "express";
 import express from "express";
 import { LoginRequestSchema, RegisterRequestSchema, type CurrentUser } from "@card-table/shared";
 import { hashPassword, secretsEqual, verifyPassword } from "./passwords.js";
 import { AuthRateLimiter } from "./rate-limit.js";
 import { findRequestUser, requireUser, type AuthenticatedRequest } from "./middleware.js";
-import { SESSION_COOKIE, SESSION_LIFETIME_MS, type SessionRepository } from "./sessions.js";
+import type { SessionRepository } from "./sessions.js";
+import { clearSessionCookie, setSessionCookie } from "./cookies.js";
 import type { UserRepository } from "./users.js";
 
 export interface AuthRouteOptions {
@@ -16,20 +17,6 @@ export interface AuthRouteOptions {
   /** Honor CF-Connecting-IP. Only safe when every request arrives through Cloudflare. */
   trustCloudflareIp?: boolean;
   rateLimiter?: AuthRateLimiter;
-}
-
-function setSessionCookie(res: Response, token: string, secure: boolean): void {
-  res.cookie(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure,
-    path: "/",
-    maxAge: SESSION_LIFETIME_MS,
-  });
-}
-
-function clearSessionCookie(res: Response, secure: boolean): void {
-  res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: "lax", secure, path: "/" });
 }
 
 function clientIp(req: Request, trustCloudflareIp: boolean): string {
@@ -96,11 +83,11 @@ export function registerAuthRoutes(app: Application, options: AuthRouteOptions):
       return;
     }
     const user = options.users.findByUsername(parsed.data.username);
-    const valid = user && await verifyPassword(
+    const valid = await verifyPassword(
       parsed.data.password,
       options.pepper,
-      user.passwordHash,
-      user.passwordSalt,
+      user?.passwordHash ?? "00".repeat(64),
+      user?.passwordSalt ?? "00000000000000000000000000000000",
     );
     if (!user || !valid) {
       res.status(401).json({ error: "Invalid username or password." });
@@ -121,13 +108,13 @@ export function registerAuthRoutes(app: Application, options: AuthRouteOptions):
       res.status(401).json({ error: "Authentication required." });
       return;
     }
+    if (auth.slid) setSessionCookie(res, auth.token, options.cookieSecure);
     res.json({ user: auth.user });
   });
 
-  app.post("/api/auth/logout", requireUser(options.sessions), (req, res) => {
+  app.post("/api/auth/logout", requireUser(options.sessions, options.cookieSecure), (req, res) => {
     options.sessions.revoke((req as AuthenticatedRequest).sessionToken);
     clearSessionCookie(res, options.cookieSecure);
     res.status(204).end();
   });
 }
-

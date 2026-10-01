@@ -2,11 +2,11 @@ import type { Application, Request } from "express";
 import express from "express";
 import { matchMaker, type AuthContext } from "colyseus";
 import { CreateRoomRequestSchema } from "@card-table/shared";
-import type { AuthenticatedRequest } from "../auth/middleware.js";
 import type { WorkspaceService } from "../library/workspace-service.js";
 import { HttpError } from "./errors.js";
 import type { TableRoom } from "../rooms/TableRoom.js";
 import type { RoomCreationRegistry } from "../rooms/room-creation.js";
+import { parseRequest, requestUser } from "./request.js";
 
 export interface RoomListing {
   roomId: string;
@@ -45,10 +45,13 @@ function authContext(req: Request): AuthContext {
 
 export function registerRoomRoutes(
   app: Application,
-  repository: WorkspaceService,
-  gateway: RoomGateway = colyseusRoomGateway,
-  creationRegistry?: RoomCreationRegistry,
+  options: {
+    workspace: WorkspaceService;
+    gateway?: RoomGateway;
+    creationRegistry?: RoomCreationRegistry;
+  },
 ): void {
+  const { workspace, gateway = colyseusRoomGateway, creationRegistry } = options;
   const json = express.json({ type: "application/json", limit: "16kb" });
 
   app.get("/api/rooms", async (_req, res, next) => {
@@ -65,15 +68,14 @@ export function registerRoomRoutes(
 
   app.post("/api/rooms", json, async (req, res, next) => {
     try {
-      const parsed = CreateRoomRequestSchema.safeParse(req.body);
-      if (!parsed.success) throw new HttpError(400, "Invalid room details.");
-      const set = repository.sets.require(parsed.data.setId);
+      const room = parseRequest(CreateRoomRequestSchema, req.body);
+      const set = workspace.sets.require(room.setId);
       if (set.archived) throw new HttpError(404, "Set not found.");
       const creationToken = creationRegistry?.issue(set.id);
       let reservation;
       try {
         reservation = await gateway.create({
-          ...parsed.data,
+          ...room,
           setName: set.name,
           creationToken,
         }, authContext(req));
@@ -88,7 +90,7 @@ export function registerRoomRoutes(
   app.post("/api/rooms/:id/end", async (req, res, next) => {
     try {
       if (!req.params.id) throw new HttpError(400, "Room ID is required.");
-      await gateway.end(req.params.id, (req as unknown as AuthenticatedRequest).user.displayName);
+      await gateway.end(req.params.id, requestUser(req).displayName);
       res.status(204).end();
     } catch (error) { next(error); }
   });

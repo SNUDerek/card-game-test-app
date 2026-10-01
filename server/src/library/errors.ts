@@ -1,8 +1,9 @@
 /**
  * Domain failures from library operations. Routes map `code` to an HTTP status:
- * not_found → 404, stale_revision and conflict → 409, invalid → 400.
+ * not_found → 404, stale_revision, conflict and in_use → 409, invalid → 400.
+ * The code is also returned in the JSON body so clients can tell them apart.
  */
-export type LibraryErrorCode = "not_found" | "stale_revision" | "conflict" | "invalid";
+export type LibraryErrorCode = "not_found" | "stale_revision" | "conflict" | "in_use" | "invalid";
 
 export class LibraryError extends Error {
   constructor(

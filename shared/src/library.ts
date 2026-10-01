@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DeckEntrySchema, MAX_DECK_SIZE } from "./decks.js";
+import { DeckEntrySchema, DeckGenerationParamsSchema, MAX_DECK_SIZE } from "./decks.js";
 
 export const SET_NAME_MAX_LENGTH = 100;
 export const DECK_NAME_MAX_LENGTH = 100;
@@ -7,6 +7,7 @@ export const DESCRIPTION_MAX_LENGTH = 2_000;
 export const CARD_NAME_MAX_LENGTH = 100;
 export const CARD_TYPE_MAX_LENGTH = 50;
 export const CARD_BODY_MAX_LENGTH = 2_000;
+export const ROOM_NAME_MAX_LENGTH = 100;
 
 /** Every editable library row carries a revision for optimistic concurrency. */
 export const RevisionSchema = z.number().int().min(1);
@@ -135,16 +136,11 @@ export const DuplicateDeckRequestSchema = z.object({
 });
 
 export const GenerateDeckRequestSchema = z.object({
-  params: z.object({
-    size: z.number().int().min(1).max(MAX_DECK_SIZE),
-    maxCopies: z.number().int().min(1).max(99),
-    includeTypes: z.array(z.string().min(1)).min(1).optional(),
-    seed: z.string().min(1).max(64).optional(),
-  }),
+  params: DeckGenerationParamsSchema,
 });
 
 export const CreateRoomRequestSchema = z.object({
   setId: z.string().uuid(),
-  name: z.string().trim().min(1).max(100),
+  name: z.string().trim().min(1).max(ROOM_NAME_MAX_LENGTH),
   description: z.string().trim().max(DESCRIPTION_MAX_LENGTH).default(""),
 });

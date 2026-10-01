@@ -57,9 +57,9 @@ const server = defineServer({
       cookieSecure: COOKIE_SECURE,
       trustCloudflareIp: TRUST_CLOUDFLARE_IP,
     });
-    app.use("/api", requireUser(sessions));
-    app.use("/images", requireUser(sessions));
-    registerRoomRoutes(app, workspace, undefined, creationRegistry);
+    app.use("/api", requireUser(sessions, COOKIE_SECURE));
+    app.use("/images", requireUser(sessions, COOKIE_SECURE));
+    registerRoomRoutes(app, { workspace, creationRegistry });
     registerWorkspaceRoutes(app, workspace, images);
     app.use(workspaceErrorHandler);
   },

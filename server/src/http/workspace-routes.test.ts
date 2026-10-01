@@ -40,7 +40,7 @@ beforeEach(async () => {
   app.use((req, _res, next) => { Object.assign(req, {
     user: { id: "user-1", username: "alice", displayName: "Alice" }, sessionToken: "token",
   }); next(); });
-  registerRoomRoutes(app, repository, gateway);
+  registerRoomRoutes(app, { workspace: repository, gateway });
   registerWorkspaceRoutes(app, repository, images);
   app.use(workspaceErrorHandler);
   server = await new Promise<Server>((resolve) => {
@@ -112,6 +112,9 @@ describe("workspace HTTP routes", () => {
     });
     expect(updated.body.card).toMatchObject({ name: "Big Goblin", revision: 2 });
     expect((await json(`/api/cards/${card.id}`, "DELETE")).response.status).toBe(204);
+    const restored = await json(`/api/cards/${card.id}/restore`, "POST");
+    expect(restored.response.status).toBe(200);
+    expect(restored.body.card).toMatchObject({ id: card.id, archived: false });
   });
 
   it("rejects invalid uploads, cross-set decks, and archiving in-use content", async () => {
@@ -139,7 +142,37 @@ describe("workspace HTTP routes", () => {
     });
     expect((await json(`/api/cards/${card.id}`, "DELETE")).response.status).toBe(409);
     usage.acquire(first.id, "room-active");
-    expect((await json(`/api/sets/${first.id}`, "DELETE")).response.status).toBe(409);
+    const inUse = await json(`/api/sets/${first.id}`, "DELETE");
+    expect(inUse.response.status).toBe(409);
+    expect(inUse.body.code).toBe("in_use");
+  });
+
+  it("blocks card edits and deck creation or duplication in archived sets", async () => {
+    const set = await createSet();
+    const image = await uploadImage();
+    const card = (await json(`/api/sets/${set.id}/cards`, "POST", {
+      name: "Goblin", type: "creature", body: "Sneaky", imageId: image.id,
+    })).body.card;
+    const deck = (await json(`/api/sets/${set.id}/decks`, "POST", {
+      name: "Army", entries: [{ cardId: card.id, copies: 1 }],
+    })).body.deck;
+    await json(`/api/sets/${set.id}`, "DELETE");
+
+    expect((await json(`/api/cards/${card.id}`, "PUT", {
+      name: "Changed", type: "creature", body: "Changed", imageId: image.id, revision: card.revision,
+    })).response.status).toBe(409);
+    expect((await json(`/api/sets/${set.id}/decks`, "POST", {
+      name: "Another", entries: [{ cardId: card.id, copies: 1 }],
+    })).response.status).toBe(409);
+    expect((await json(`/api/decks/${deck.id}/duplicate`, "POST", {})).response.status).toBe(409);
+  });
+
+  it("returns a distinct stale revision error code", async () => {
+    const set = await createSet();
+    await json(`/api/sets/${set.id}`, "PATCH", { name: "Updated", revision: set.revision });
+    const stale = await json(`/api/sets/${set.id}`, "PATCH", { name: "Stale", revision: set.revision });
+    expect(stale.response.status).toBe(409);
+    expect(stale.body.code).toBe("stale_revision");
   });
 
   it("supports deck CRUD, generation, duplication, forking, and ZIP export", async () => {
