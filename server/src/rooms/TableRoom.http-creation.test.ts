@@ -20,17 +20,17 @@ describe("TableRoom HTTP-only creation", () => {
   beforeEach(async () => colyseus.cleanup());
 
   it("rejects socket creation and accepts one HTTP-issued proof", async () => {
-    await expect(colyseus.sdk.create("table", { displayName: "Alice", setId: "set-a" }))
+    await expect(colyseus.sdk.create("table", { setId: "set-a" }))
       .rejects.toThrow("authenticated HTTP API");
 
     const creationToken = registry.issue("set-a");
     const room = await colyseus.sdk.create("table", {
-      displayName: "Alice", setId: "set-a", setName: "Set A", name: "Playtest", creationToken,
+      setId: "set-a", setName: "Set A", name: "Playtest", creationToken,
     });
     expect(room.roomId).toEqual(expect.any(String));
 
     await expect(colyseus.sdk.create("table", {
-      displayName: "Bob", setId: "set-a", creationToken,
+      setId: "set-a", creationToken,
     })).rejects.toThrow("authenticated HTTP API");
   });
 });

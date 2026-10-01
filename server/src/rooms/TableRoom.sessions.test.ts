@@ -20,11 +20,19 @@ describe("TableRoom sessions", () => {
 
   beforeAll(async () => {
     colyseus = await boot({
-      rooms: { table: defineRoom(TableRoom, {
-        setId: "set-1",
-        cardLibrary: fixedCardLibrary(["spell-1"]),
-        authenticate: () => ({ id: "user-alice", username: "alice", displayName: "Alice" }),
-      }) },
+      rooms: {
+        table: defineRoom(TableRoom, {
+          setId: "set-1",
+          cardLibrary: fixedCardLibrary(["spell-1"]),
+          authenticate: () => ({ id: "user-alice", username: "alice", displayName: "Alice" }),
+        }),
+        // No session cookie resolves to an account.
+        anonymous: defineRoom(TableRoom, {
+          setId: "set-1",
+          cardLibrary: fixedCardLibrary(["spell-1"]),
+          authenticate: () => undefined,
+        }),
+      },
     });
   });
 
@@ -39,16 +47,20 @@ describe("TableRoom sessions", () => {
   it("lets an authenticated account join by room id", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
 
-    const alice = await colyseus.sdk.joinById(room.roomId, { displayName: "Alice" });
+    const alice = await colyseus.sdk.joinById(room.roomId);
     await room.waitForNextPatch();
 
     expect(alice.roomId).toBe(room.roomId);
     expect(room.state.players.size).toBe(1);
   });
 
+  it("rejects a connection without a signed-in account", async () => {
+    await expect(colyseus.sdk.joinOrCreate("anonymous")).rejects.toThrow("Authentication required.");
+  });
+
   it("synchronizes account identity without exposing credentials", async () => {
     const room = await colyseus.createRoom<TableRoom>("table");
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
     await room.waitForNextPatch();
 
     expect([...alice.state.players.values()][0]?.userId).toBe("user-alice");
@@ -56,9 +68,9 @@ describe("TableRoom sessions", () => {
 
   it("keeps rooms public so the authenticated room browser can list them", async () => {
     const first = await colyseus.createRoom<TableRoom>("table");
-    await colyseus.connectTo(first, { displayName: "Alice" });
+    await colyseus.connectTo(first);
 
-    const outsider = await colyseus.sdk.joinOrCreate("table", { displayName: "Mallory" });
+    const outsider = await colyseus.sdk.joinOrCreate("table");
 
     expect(outsider.roomId).toBe(first.roomId);
   });
@@ -67,8 +79,8 @@ describe("TableRoom sessions", () => {
     const room = await colyseus.createRoom<TableRoom>("table", {
       reconnectionGraceSeconds: 5,
     });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    await colyseus.connectTo(room);
     const { cardId } = await alice.request(TABLE_COMMANDS.SPAWN_CARD, {
       definitionId: "spell-1",
       x: 0,
@@ -77,9 +89,7 @@ describe("TableRoom sessions", () => {
     await alice.request(TABLE_COMMANDS.CLAIM_OBJECT, {
       object: { kind: "card", id: cardId },
     });
-    const playerId = [...room.state.players.values()].find(
-      (player) => player.displayName === "Alice",
-    )?.id as string;
+    const playerId = await sessionPlayerId(alice);
     const reconnectionToken = alice.reconnectionToken;
 
     await alice.leave(false);
@@ -105,8 +115,9 @@ describe("TableRoom sessions", () => {
     const room = await colyseus.createRoom<TableRoom>("table", {
       reconnectionGraceSeconds: 0.2,
     });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    const bob = await colyseus.connectTo(room);
+    const bobPlayerId = await sessionPlayerId(bob);
     const reconnectionToken = alice.reconnectionToken;
 
     alice.reconnection.enabled = false;
@@ -118,7 +129,7 @@ describe("TableRoom sessions", () => {
     await room.waitForNextPatch();
 
     expect(room.state.players.size).toBe(1);
-    expect([...room.state.players.values()][0]?.displayName).toBe("Alice");
+    expect([...room.state.players.keys()]).toEqual([bobPlayerId]);
     await expect(colyseus.sdk.reconnect(reconnectionToken)).rejects.toThrow();
   });
 
@@ -126,8 +137,8 @@ describe("TableRoom sessions", () => {
     const room = await colyseus.createRoom<TableRoom>("table", {
       reconnectionGraceSeconds: 5,
     });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
-    await colyseus.connectTo(room, { displayName: "Bob" });
+    const alice = await colyseus.connectTo(room);
+    await colyseus.connectTo(room);
     const reconnectionToken = alice.reconnectionToken;
 
     await alice.leave();
@@ -141,7 +152,7 @@ describe("TableRoom sessions", () => {
     const room = await colyseus.createRoom<TableRoom>("table", {
       reconnectionGraceSeconds: 5,
     });
-    const alice = await colyseus.connectTo(room, { displayName: "Alice" });
+    const alice = await colyseus.connectTo(room);
     const playerId = await sessionPlayerId(alice);
     await room.waitForNextPatch();
 
@@ -154,5 +165,4 @@ describe("TableRoom sessions", () => {
 
     expect(await sessionPlayerId(rejoined)).toBe(playerId);
   });
-
 });

@@ -165,7 +165,7 @@ export function RoomHud() {
             { label: "Leave", tone: "danger", onClick: () => void leaveRoom() },
           ]}
         >
-          The room stays open until it times out, but you may want to save the board first.
+          Leaving ends the room and discards the table, so you may want to save the board first.
         </ConfirmDialog>
       )}
       {dialog === "end" && (
