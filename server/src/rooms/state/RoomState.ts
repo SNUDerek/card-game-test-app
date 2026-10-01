@@ -70,6 +70,9 @@ export const RoomState = schema(
     hostPlayerId: t.string().default(""),
     /** The library set this table plays. Fixed for the room's life. */
     setId: t.string().default(""),
+    /** Editable room label; mirrors the room metadata used by the room browser. */
+    name: t.string().default(""),
+    description: t.string().default(""),
   },
   "RoomState",
 );

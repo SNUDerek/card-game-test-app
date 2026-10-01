@@ -206,6 +206,8 @@ export class TableRoom extends Room<{ state: RoomState }> {
     this.authenticate = options.authenticate ?? (() => undefined);
     this.reconnectionGraceSeconds =
       options.reconnectionGraceSeconds ?? DEFAULT_RECONNECTION_GRACE_SECONDS;
+    this.state.name = options.name ?? "Table";
+    this.state.description = options.description ?? "";
     await this.setMetadata({
       name: options.name ?? "Table",
       description: options.description ?? "",
@@ -225,6 +227,9 @@ export class TableRoom extends Room<{ state: RoomState }> {
       playerId,
     }));
     this.command(ROOM_COMMANDS.UPDATE_ROOM_METADATA, UpdateRoomMetadataPayloadSchema, async (_context, payload) => {
+      // Clients cannot read room metadata, so mirror it into synced state.
+      if (payload.name !== undefined) this.state.name = payload.name;
+      if (payload.description !== undefined) this.state.description = payload.description;
       await this.setMetadata({ ...this.metadata, ...payload });
       return { updated: true as const };
     });

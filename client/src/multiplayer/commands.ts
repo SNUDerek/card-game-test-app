@@ -17,6 +17,7 @@ import {
   type DeleteCardResult,
   ROOM_COMMANDS,
   type SessionResult,
+  type UpdateRoomMetadataPayload,
   type StackCardPayload,
   type StackCardResult,
   type MoveStackPayload,
@@ -126,4 +127,12 @@ export function shuffleStack(room: Room, payload: StackIdPayload): Promise<Shuff
 export function setHover(room: Room, payload: SetHoverPayload): Promise<SetHoverResult | void> {
   room.send(TABLE_COMMANDS.SET_HOVER, payload);
   return Promise.resolve();
+}
+
+export function updateRoomMetadata(room: Room, payload: UpdateRoomMetadataPayload): Promise<unknown> {
+  return room.request(ROOM_COMMANDS.UPDATE_ROOM_METADATA, payload);
+}
+
+export function keepRoomOpen(room: Room): Promise<unknown> {
+  return room.request(ROOM_COMMANDS.KEEP_OPEN, {});
 }
