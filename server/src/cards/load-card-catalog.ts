@@ -4,19 +4,26 @@ import { imageSizeFromFile } from "image-size/fromFile";
 import {
   CARD_IMAGE_MAX_SIZE,
   CARD_IMAGE_MIN_SIZE,
-  CardDefinitionSchema,
   CardDefinitionSourceSchema,
-  type CardDefinition,
-  type CardDefinitionId,
 } from "@card-table/shared";
 
 const SUPPORTED_IMAGE_EXTENSIONS = new Set([".jpg", ".png"]);
 
-export type CardCatalog = ReadonlyMap<CardDefinitionId, CardDefinition>;
+/** A card as described by its JSON file, with the display name taken from the file stem. */
+export interface CardFileDefinition {
+  /** The JSON file's own id. Unique within the folder; not a library card id. */
+  id: string;
+  name: string;
+  type: string;
+  body: string;
+  metadata?: Record<string, unknown>;
+}
 
 /** One validated card pair: its definition and the absolute path of its artwork. */
 export interface CardSourceFile {
-  definition: CardDefinition;
+  definition: CardFileDefinition;
+  /** The shared file stem, for error messages. */
+  stem: string;
   imagePath: string;
 }
 
@@ -73,15 +80,9 @@ async function groupFilesByStem(cardsDir: string): Promise<Map<string, StemFiles
   return byStem;
 }
 
-/** Scans `cardsDir` for matching JSON/image pairs and builds the card catalog. */
-export async function loadCardCatalog(cardsDir: string): Promise<CardCatalog> {
-  const sources = await loadCardSources(cardsDir);
-  return new Map(sources.map(({ definition }) => [definition.id, definition]));
-}
-
 /**
- * Validates every JSON/image pair in `cardsDir`, sorted by file stem. Used by
- * the catalog above and by the library importer, which also needs the artwork.
+ * Validates every JSON/image pair in `cardsDir`, sorted by file stem, for the
+ * library importer.
  * Collects every validation issue across every file before failing, so a
  * single run reports the full set of problems rather than just the first.
  */
@@ -160,29 +161,28 @@ export async function loadCardSources(cardsDir: string): Promise<CardSourceFile[
     }
 
     const { id, type, body, ...metadata } = parsed.data;
-    const definition = CardDefinitionSchema.safeParse({
-      id,
-      name: deriveDisplayName(stem),
-      type,
-      body,
-      imageUrl: `/cards/${encodeURIComponent(imageFile)}`,
-      sourceName: stem,
-      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
-    });
-    if (!definition.success) {
-      const detail = definition.error.issues
-        .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
-        .join("; ");
-      issues.push(`invalid derived card definition for ${json}: ${detail}`);
+    const name = deriveDisplayName(stem);
+    if (name === "") {
+      issues.push(`invalid derived card definition for ${json}: the file name gives an empty display name`);
       continue;
     }
-    sources.push({ definition: definition.data, imagePath: path.join(cardsDir, imageFile) });
+    sources.push({
+      definition: {
+        id,
+        name,
+        type,
+        body,
+        ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+      },
+      stem,
+      imagePath: path.join(cardsDir, imageFile),
+    });
   }
 
   const stemsById = new Map<string, string[]>();
-  for (const { definition: def } of sources) {
+  for (const { definition: def, stem } of sources) {
     const stems = stemsById.get(def.id) ?? [];
-    stems.push(def.sourceName);
+    stems.push(stem);
     stemsById.set(def.id, stems);
   }
   for (const [id, stems] of stemsById) {

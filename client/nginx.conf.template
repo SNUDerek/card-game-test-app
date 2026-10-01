@@ -22,7 +22,8 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    location /cards/ {
+    # Card artwork, served by content hash behind the same session cookie.
+    location /images/ {
         proxy_pass http://${SERVER_UPSTREAM};
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/cards": "http://localhost:2567",
+      "/images": "http://localhost:2567",
       "/api": "http://localhost:2567",
       // Mirrors the nginx rule in client/nginx.conf.template, so the default
       // "same origin" endpoint resolves identically in dev and in Docker.

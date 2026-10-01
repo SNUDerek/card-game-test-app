@@ -19,23 +19,37 @@ export const CardDefinitionSourceSchema = z
 export type CardDefinitionSource = z.infer<typeof CardDefinitionSourceSchema>;
 
 /**
- * Full runtime card definition served to clients, combining validated source
- * JSON with loader-computed fields (name, imageUrl, sourceName).
+ * A card definition as clients receive it: one card of a library set, plus the
+ * URL its artwork is served from. Table instances reference it by `id`.
+ *
+ * Deliberately looser than the library's write schemas, so a card stored before
+ * a limit changed still reaches the table instead of failing the whole list.
  */
 export const CardDefinitionSchema = z.object({
   id: z.string().min(1),
-  name: z.string().min(1),
-  type: z.string().min(1),
+  setId: z.string().min(1),
+  name: z.string(),
+  type: z.string(),
   body: z.string(),
+  imageId: z.string().min(1),
   imageUrl: z.string().min(1),
-  sourceName: z.string().min(1),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  position: z.number().int(),
+  revision: z.number().int(),
+  archived: z.boolean(),
+  updatedAt: z.number().int(),
 });
 
 export type CardDefinition = z.infer<typeof CardDefinitionSchema>;
 
-export const CardCatalogResponseSchema = z.object({
+/** `GET /api/sets/:setId/cards` */
+export const SetCardsResponseSchema = z.object({
   cards: z.array(CardDefinitionSchema),
 });
 
-export type CardCatalogResponse = z.infer<typeof CardCatalogResponseSchema>;
+export type SetCardsResponse = z.infer<typeof SetCardsResponseSchema>;
+
+/** Where the server serves an uploaded image, by its content-hash id. */
+export function cardImageUrl(imageId: string): string {
+  return `/images/${imageId}`;
+}

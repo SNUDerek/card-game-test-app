@@ -4,6 +4,7 @@ import type { WorkspaceDatabase } from "../db/connection.js";
 import { CardRepository } from "../db/cards.js";
 import { SetRepository } from "../db/sets.js";
 import { LibraryError } from "./errors.js";
+import type { CardDefinitionLookup } from "../commands/card/spawn-card.js";
 
 /** One write to a set or its cards. Live rooms bound to `setId` relay it to their players. */
 export interface LibraryChange {
@@ -12,11 +13,6 @@ export interface LibraryChange {
   cardIds: string[];
   /** Who made the change, so tables can say "Alice edited Fireball". */
   userId: string | null;
-}
-
-/** The only membership test rooms need, matching `ReadonlySet#has`. */
-export interface CardIdLookup {
-  has(cardId: string): boolean;
 }
 
 /**
@@ -63,7 +59,7 @@ export class CardLibrary extends EventEmitter<{ changed: [LibraryChange] }> {
   }
 
   /** A live view of a set's active card ids for command validation; it sees later edits. */
-  activeCardIds(setId: string): CardIdLookup {
+  activeCardIds(setId: string): CardDefinitionLookup {
     return { has: (cardId) => this.hasActiveCard(setId, cardId) };
   }
 

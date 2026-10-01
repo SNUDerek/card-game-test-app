@@ -37,6 +37,7 @@ function fakeRoom(state: Partial<ClientRoomState> = {}) {
     stacks: new Map(),
     players: new Map(),
     hostPlayerId: "",
+    setId: "",
     ...state,
   };
   const room = {
@@ -60,6 +61,7 @@ describe("useRoomSync", () => {
       stacks: new Map([["s1", stack("s1", ["c1", "c2"])]]),
       players: new Map([["p1", player("p1", 0)]]),
       hostPlayerId: "p1",
+      setId: "set-1",
     });
     const { result } = renderHook(() => useRoomSync());
 
@@ -69,6 +71,7 @@ describe("useRoomSync", () => {
     expect(result.current.stacks).toEqual([stack("s1", ["c1", "c2"])]);
     expect(result.current.players).toEqual([player("p1", 0)]);
     expect(result.current.hostPlayerId).toBe("p1");
+    expect(result.current.setId).toBe("set-1");
   });
 
   it("orders players by join order, whatever order the map yields", () => {
@@ -117,6 +120,7 @@ describe("useRoomSync", () => {
       stacks: new Map([["s1", stack("s1", ["c1", "c2"])]]),
       players: new Map([["p1", player("p1", 0)]]),
       hostPlayerId: "p1",
+      setId: "set-1",
     });
     const { result } = renderHook(() => useRoomSync());
     act(() => result.current.syncRoom(room));
@@ -127,5 +131,6 @@ describe("useRoomSync", () => {
     expect(result.current.stacks).toEqual([]);
     expect(result.current.players).toEqual([]);
     expect(result.current.hostPlayerId).toBe("");
+    expect(result.current.setId).toBe("");
   });
 });

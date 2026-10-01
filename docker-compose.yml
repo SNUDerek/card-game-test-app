@@ -8,7 +8,6 @@ services:
       - "${SERVER_PORT:-2567}"
     environment:
       PORT: ${SERVER_PORT:-2567}
-      CARDS_DIR: /app/cards
       DATA_DIR: /app/data
       AUTH_PEPPER: ${AUTH_PEPPER:?Set AUTH_PEPPER in .env}
       SIGNUP_PASSCODE: ${SIGNUP_PASSCODE:-}
@@ -16,6 +15,7 @@ services:
       TRUST_PROXY: ${TRUST_PROXY:-1}
       TRUST_CLOUDFLARE_IP: ${TRUST_CLOUDFLARE_IP:-false}
     volumes:
+      # Only the importer reads this (`cards:import`); the table uses the library.
       - ./cards:/app/cards:ro
       - workspace-data:/app/data
     restart: unless-stopped
