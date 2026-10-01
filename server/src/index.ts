@@ -27,7 +27,11 @@ const database = openDatabase(DATABASE_FILE);
 const users = new UserRepository(database);
 const sessions = new SessionRepository(database);
 const images = new ImageStore(new ImageRepository(database), IMAGES_DIR);
-await seedSampleSetIfEmpty(database, images, SAMPLE_CARDS_DIR);
+const sampleSeed = await seedSampleSetIfEmpty(database, images, SAMPLE_CARDS_DIR);
+if (sampleSeed.seeded) console.log(`Seeded "Sample Set" from ${SAMPLE_CARDS_DIR}`);
+else if (sampleSeed.reason === "missing_directory") {
+  console.warn(`Sample cards folder not found at ${SAMPLE_CARDS_DIR}; skipping the Sample Set.`);
+}
 const usageRegistry = new SetUsageRegistry();
 const creationRegistry = new RoomCreationRegistry();
 const idleTimeoutMs = parseIdleTimeoutMinutes(process.env.ROOM_IDLE_TIMEOUT_MINUTES) * 60_000;

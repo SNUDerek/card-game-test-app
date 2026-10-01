@@ -14,7 +14,7 @@ import { CARD_HEIGHT, CARD_WIDTH, CardRenderer } from "../../../cards/CardRender
 import { ApiConflictError, apiRequest } from "../../../api/client";
 import { errorMessage } from "../errors";
 import { prepareCardImage } from "./prepare-card-image";
-import "./CardEditor.css";
+import "../editor-dialog.css";
 
 const ImagesResponseSchema = z.object({ images: z.array(LibraryImageSchema) });
 const UploadResponseSchema = z.object({ image: z.object({ id: z.string() }) });

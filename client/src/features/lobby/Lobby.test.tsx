@@ -51,6 +51,8 @@ describe("Lobby", () => {
     const link = screen.getByRole("link", { name: "Card sets" });
     expect(link).toHaveAttribute("href", "/sets");
     expect(link.closest("form")).toBeNull();
+    // No empty-workspace hint while the set list is still loading.
+    expect(screen.queryByText(/before opening a room/)).toBeNull();
   });
 
   it("links to card-set creation when the workspace has no sets", async () => {

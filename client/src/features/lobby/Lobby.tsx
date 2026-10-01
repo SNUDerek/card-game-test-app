@@ -20,12 +20,14 @@ export function Lobby() {
   const [roomName, setRoomName] = useState("");
   const [roomDescription, setRoomDescription] = useState("");
   const [setsError, setSetsError] = useState<string | null>(null);
+  const [setsLoaded, setSetsLoaded] = useState(false);
 
   useEffect(() => {
     let active = true;
     void apiRequest("/api/sets", z.object({ sets: z.array(CardSetSummarySchema) })).then((body) => {
       if (!active) return;
       setSets(body.sets);
+      setSetsLoaded(true);
       setSetId((current) => current || body.sets[0]?.id || "");
       setSetsError(null);
     }).catch((cause: unknown) => {
@@ -96,7 +98,7 @@ export function Lobby() {
               {sets.length === 0 && <option value="">No sets available</option>}
               {sets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}
             </select>
-            {sets.length === 0 && !setsError && (
+            {setsLoaded && sets.length === 0 && (
               <p className="lobby-empty-hint">Create a <Link href="/sets">card set</Link> before opening a room.</p>
             )}
             <label htmlFor="lobby-room-name">Room name</label>

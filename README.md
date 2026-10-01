@@ -90,7 +90,7 @@ Set these in `.env` (Compose reads it automatically):
 | `TRUST_PROXY` | `1` | Trusted reverse-proxy hop count for client IP/rate limiting |
 | `TRUST_CLOUDFLARE_IP` | `false` | Rate-limit by `CF-Connecting-IP`; only when every request comes through Cloudflare |
 | `ROOM_IDLE_TIMEOUT_MINUTES` | `120` | Minutes without a table change before a room ends; members get a 5-minute warning |
-| `SAMPLE_CARDS_DIR` | `./cards` | Folder imported as Sample Set when the workspace has no sets; empty disables seeding |
+| `SAMPLE_CARDS_DIR` | repo `cards/` | Folder imported as Sample Set when the workspace has no sets; empty disables seeding |
 
 So to fit a host that only exposes 9000–9999:
 

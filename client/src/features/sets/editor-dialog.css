@@ -1,3 +1,4 @@
+/* Modal dialogs shared by the card, deck, and deck-generator editors, on the set screen and the table. */
 .editor-backdrop {
   position: fixed;
   inset: 0;
