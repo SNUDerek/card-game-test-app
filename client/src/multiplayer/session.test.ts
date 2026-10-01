@@ -11,13 +11,14 @@ import {
 
 describe("room routes", () => {
   it.each([
+    ["/rooms/KM7XPQ3D", "KM7XPQ3D"],
+    ["/rooms/KM7XPQ3D/", "KM7XPQ3D"],
     ["/room/KM7XPQ3D", "KM7XPQ3D"],
-    ["/room/KM7XPQ3D/", "KM7XPQ3D"],
   ])("reads the room id out of %s", (pathname, expected) => {
     expect(parseRoomIdFromPath(pathname)).toBe(expected);
   });
 
-  it.each([["/"], ["/room/"], ["/room/not a room id"], ["/rooms/KM7XPQ3D"], ["/lobby"]])(
+  it.each([["/"], ["/room/"], ["/room/not a room id"], ["/rooms/"], ["/lobby"]])(
     "treats %s as the lobby",
     (pathname) => {
       expect(parseRoomIdFromPath(pathname)).toBeNull();
@@ -25,9 +26,9 @@ describe("room routes", () => {
   );
 
   it("builds shareable room links", () => {
-    expect(roomPath("KM7XPQ3D")).toBe("/room/KM7XPQ3D");
+    expect(roomPath("KM7XPQ3D")).toBe("/rooms/KM7XPQ3D");
     expect(roomJoinUrl("KM7XPQ3D", "https://cards.example.com")).toBe(
-      "https://cards.example.com/room/KM7XPQ3D",
+      "https://cards.example.com/rooms/KM7XPQ3D",
     );
   });
 });

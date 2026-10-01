@@ -1,26 +1,28 @@
-import { CardBrowser } from "./features/card-browser/CardBrowser";
-import { CardCatalogProvider } from "./features/card-browser/CardCatalogContext";
-import { CatalogNoticeToast } from "./features/card-browser/CatalogNoticeToast";
+import { lazy, Suspense } from "react";
+import { Redirect, Route, Router, Switch } from "wouter";
 import { Lobby } from "./features/lobby/Lobby";
-import { RoomHud } from "./features/room/RoomHud";
 import { MultiplayerProvider, useMultiplayer } from "./multiplayer/MultiplayerContext";
-import { Table } from "./tabletop/Table";
 import { AuthProvider, useCurrentUser } from "./features/auth/AuthContext";
 import { AuthScreen } from "./features/auth/AuthScreen";
 
 function Session() {
-  const { status, setId, subscribeCatalogChanges } = useMultiplayer();
+  const { status } = useMultiplayer();
 
   if (status !== "connected") return <Lobby />;
 
-  return (
-    <CardCatalogProvider setId={setId} subscribeToChanges={subscribeCatalogChanges}>
-      <Table />
-      <RoomHud />
-      <CardBrowser />
-      <CatalogNoticeToast />
-    </CardCatalogProvider>
-  );
+  return <LazyRoomTable />;
+}
+
+const LazyRoomTable = lazy(() => import("./features/room/RoomScreen"));
+const SetListScreen = lazy(() => import("./features/sets/SetListScreen"));
+const SetScreen = lazy(() => import("./features/sets/SetScreen"));
+
+function RoomScreen() {
+  return <Session />;
+}
+
+function LegacyRoomRedirect({ params }: { params: { id: string } }) {
+  return <Redirect to={`/rooms/${params.id}`} replace />;
 }
 
 function AuthenticatedApp() {
@@ -29,11 +31,20 @@ function AuthenticatedApp() {
   if (status === "anonymous") return <AuthScreen />;
   return (
     <MultiplayerProvider>
-      <Session />
+      <Suspense fallback={<main aria-label="Loading page" />}>
+        <Switch>
+          <Route path="/" component={Session} />
+          <Route path="/rooms/:id" component={RoomScreen} />
+          <Route path="/room/:id" component={LegacyRoomRedirect} />
+          <Route path="/sets" component={SetListScreen} />
+          <Route path="/sets/:id" component={SetScreen} />
+          <Route><Redirect to="/" replace /></Route>
+        </Switch>
+      </Suspense>
     </MultiplayerProvider>
   );
 }
 
 export function App() {
-  return <AuthProvider><AuthenticatedApp /></AuthProvider>;
+  return <Router><AuthProvider><AuthenticatedApp /></AuthProvider></Router>;
 }
