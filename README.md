@@ -1,21 +1,34 @@
 # Card Game Testing App
 
-Self-hosted multiplayer tabletop for prototyping physical card games. 
+Self-hosted multiplayer tabletop for prototyping physical card games.
 
-Dynamically loads card data from images and json files.  
-Add a folder of cards (images and json files) to the `/cards` directory to add cards to the game.
+A small shared workspace: people sign in, keep card **sets** in a library, and open
+temporary **rooms** to play a set together. The table supports basic physical
+operations such as tapping and untapping (via right-click menu), flipping
+(double-clicking), stacking, shuffling stacks, and drawing from stacks.
 
-Allows for basic operations such as tapping and untapping (via right-click menu), flipping (double-clicking), stacking, shuffling stacks, and drawing from stacks.
+No rulesets are supported; this is more like a basic Tabletop Simulator.
 
-No rulesets supported, this is more like a basic Tabletop Simulator.
+## Concepts
+
+| Term | Meaning |
+|---|---|
+| **Set** | One version of the game, with its own cards. Sets are independent of each other. |
+| **Card** | A card definition in a set: name, type, body text, and square artwork. |
+| **Deck** | A saved list of cards and copy counts from one set. |
+| **Room** | A temporary table bound to one set. It ends when everyone has left. |
+
+Accounts, sets, cards, decks, and images persist in a SQLite database. Rooms and
+everything placed on a table do not.
 
 ## Project layout
 
 ```text
 shared/   shared TypeScript types, Zod schemas, protocol constants
-server/   Node.js + Colyseus + Express (card catalog API, TableRoom)
+server/   Node.js + Colyseus + Express (auth, library API, TableRoom)
 client/   React + Vite + react-konva (tabletop UI)
-cards/    card artwork (.jpg/.png) + matching .json definitions
+cards/    sample card files (.jpg/.png + .json) for the importer
+docs/     hosting and backup guide
 ```
 
 This is an npm workspaces monorepo.
@@ -33,15 +46,21 @@ AUTH_PEPPER=local-development-secret SIGNUP_PASSCODE=invite-code npm run dev
 ```
 
 This starts the Colyseus/Express server on `:2567` and the Vite dev server on `:5173`.
-The Vite dev server proxies `/cards`, `/api`, and the Colyseus connection (`/colyseus`)
-to the backend, so the client reaches everything through its own origin — the same
-arrangement Docker uses.
+The Vite dev server proxies `/api`, `/images`, and the Colyseus connection
+(`/colyseus`) to the backend, so the client reaches everything through its own
+origin, the same arrangement Docker uses.
 
-Open [http://localhost:5173](http://localhost:5173) in your browser to access the application.
+The database and uploaded images go in `./data` (override with `DATA_DIR`).
+
+Open [http://localhost:5173](http://localhost:5173), register with the signup code
+(`invite-code` above), then import a set (see [Adding cards](#adding-cards)) so there is
+something to play.
 
 Other useful scripts:
 
 ```bash
+npm test            # run server and client tests
+npm run coverage    # tests plus coverage summaries; HTML in server/coverage and client/coverage
 npm run typecheck   # type-check all workspaces
 npm run build       # build shared, server, and client
 ```
@@ -56,7 +75,7 @@ docker compose up --build
 Defaults put the UI on [http://localhost:8080](http://localhost:8080). The server
 is reachable only through the UI's nginx proxy.
 
-### Configuring ports
+### Configuration
 
 Set these in `.env` (Compose reads it automatically):
 
@@ -69,6 +88,7 @@ Set these in `.env` (Compose reads it automatically):
 | `SIGNUP_PASSCODE` | *(empty)* | Invite code required for registration; empty disables registration |
 | `COOKIE_SECURE` | `false` | Set to `true` when serving the public site over HTTPS |
 | `TRUST_PROXY` | `1` | Trusted reverse-proxy hop count for client IP/rate limiting |
+| `TRUST_CLOUDFLARE_IP` | `false` | Rate-limit by `CF-Connecting-IP`; only when every request comes through Cloudflare |
 
 So to fit a host that only exposes 9000–9999:
 
@@ -80,9 +100,9 @@ SERVER_PORT=9001
 ### Remote hosting
 
 **Only `CLIENT_PORT` needs to be reachable.** The client talks to the server through
-its own origin under `/colyseus`, which nginx proxies to the server container —
-WebSocket included. Nothing records the hostname, so the same image works on
-`localhost`, a LAN address, or a public host with no rebuild.
+its own origin, which nginx proxies to the server container, WebSocket included.
+Nothing records the hostname, so the same image works on `localhost`, a LAN address,
+or a public host with no rebuild.
 
 The **Copy link** button builds its URL from the address the browser used, so a
 session opened on the host itself copies a `localhost` link. Set
@@ -93,45 +113,55 @@ and every copied link points there:
 PUBLIC_CLIENT_URL=http://my.serverurl.com:9000
 ```
 
-Accounts require HTTPS on any non-local deployment. Keep the browser and server
-on the same origin so the HttpOnly session cookie protects both API and room
-connections; nginx handles the API and WebSocket proxying.
+Accounts require HTTPS on any non-local deployment. To serve the table on a public
+hostname with HTTPS, see [docs/hosting.md](docs/hosting.md). It covers the
+recommended Cloudflare Tunnel setup and how to back up and restore the workspace.
 
-SQLite data is stored in the `workspace-data` Docker volume. Back up that volume
-alongside the configured `AUTH_PEPPER`. To bootstrap an account while browser
-registration is disabled, run:
+## Accounts
+
+Everything except the login page requires an account. With `SIGNUP_PASSCODE` set,
+people register in the browser using that code. With it empty, registration is off,
+and accounts are created from the command line:
 
 ```bash
+# Local development (prompts for the password):
 AUTH_PEPPER='the-same-secret' npm run user:create -w server -- alice "Alice"
+
+# In Docker (the container already has AUTH_PEPPER):
+docker compose exec server node server/dist/auth/create-user.js alice "Alice"
 ```
 
-To copy a folder of card files into the workspace library as a new set, run
-the importer. Card images are stored by content hash under `DATA_DIR/images`.
-The table does not read library sets yet; it still loads `cards/` at startup.
+The password is read from a prompt, or from `USER_CREATE_PASSWORD` if set. The prompt
+does not hide what you type.
+
+## Adding cards
+
+Cards live in the workspace library. Import a folder of card files as a new set:
 
 ```bash
 npm run cards:import -w server -- ./cards "Skirmish v1"
-# in Docker:
+# In Docker; ./cards is mounted read-only at /app/cards:
 docker compose exec server node server/dist/library/import-cards-cli.js /app/cards "Skirmish v1"
 ```
 
-To serve the table on a public hostname with HTTPS, see
-[docs/hosting.md](docs/hosting.md). It covers the recommended Cloudflare Tunnel
-setup and how to back up the workspace data.
-The local `cards/` directory is bind-mounted as a read-only volume into the server container. This means you can add, remove, or modify card assets (`.jpg`/`.png` and `.json`) locally, and the server will recognize them without requiring a container rebuild (a backend restart is required to load new cards).
+Each import creates a new, independent set. Re-importing the same folder creates a
+second set rather than updating the first. Imported artwork is stored by content
+hash under `DATA_DIR/images`.
 
-## Adding or Modifying Cards
+The library HTTP API (`/api/sets`, `/api/sets/:id/cards`, `/api/images`, decks,
+fork, and export) supports editing sets and cards. Editor screens in the browser are
+still to come.
 
-To add or modify cards in the game, place a matching pair of image and JSON files into the `cards/` directory. The server loads these dynamically at startup.
+### Card file format
 
-### File Requirements
-Each card requires two files with the **same filename stem** (e.g., `fireball.jpg` and `fireball.json`).
+Each card is two files with the **same filename stem** (e.g., `fireball.jpg` and
+`fireball.json`).
 
-1. **Image File (`.jpg` or `.png`)**
+1. **Image file (`.jpg` or `.png`)**
    - Must be a square image.
    - Dimensions must be between 32px and 512px.
 
-2. **JSON Definition File (`.json`)**
+2. **JSON definition file (`.json`)**
    - Must contain the following minimum fields:
      ```json
      {
@@ -140,32 +170,38 @@ Each card requires two files with the **same filename stem** (e.g., `fireball.jp
        "body": "Card description or rules text."
      }
      ```
-   - **`id`**: A unique string identifier for the card definition. (The server will reject duplicate IDs).
-   - **`type`**: A string representing the card type (e.g., "spell", "item", "creature").
-   - **`body`**: A string containing the text to be displayed on the bottom half of the card.
-   - *Optional*: Any additional fields you include in the JSON will be preserved and passed along in a `metadata` object to the client. The card's display name is automatically derived from the filename, but you can also explicitly provide a `name` field in the JSON.
+   - **`id`**: A unique identifier within the folder. The importer rejects duplicates.
+     Library cards get new IDs; the file's `id` is kept as `metadata.sourceId`.
+   - **`type`**: The card type (e.g., "spell", "item", "creature").
+   - **`body`**: The text shown on the bottom half of the card.
+   - *Optional*: Any additional fields are preserved in the card's `metadata`. The
+     display name comes from the filename unless the JSON has a `name` field.
 
-> [!NOTE]
-> If you are running the app locally or via Docker, you must **restart the backend server** for it to load the new or modified card assets into the catalog.
+## Usage guide
 
-## Usage Guide
+This app provides a generic, unopinionated tabletop environment. It does not enforce
+game rules; it provides the primitives to simulate physical card interactions:
 
-This app provides a generic, unopinionated tabletop environment. It does not enforce specific game rules but rather provides the primitives to simulate physical card interactions:
-
-1. **Accounts, Lobby & Rooms:** Register with the workspace signup code or sign in, then create a room. Share the generated URL with other logged-in players.
-2. **Card Browser:** Open the side panel to browse available cards loaded from the server's `cards/` directory.
-3. **Spawning Cards:** Drag any card from the card browser directly onto the tabletop.
-4. **Basic Interactions:**
+1. **Rooms:** Sign in, pick a set, name the room, and create it. Share the room link
+   with other signed-in players. A room ends when the last person leaves.
+2. **Card browser:** Open the side panel to browse the cards of the room's set.
+3. **Spawning cards:** Drag any card from the card browser onto the tabletop.
+4. **Basic interactions:**
    - **Move:** Drag and drop cards anywhere on the table.
    - **Preview:** Hover over a card to view a magnified preview.
-   - **Context Menu:** Right-click a card to bring up the context menu, where you can **Tap/Untap**, **Flip** (face-up/face-down), or **Delete** the card.
+   - **Context menu:** Right-click a card to **Tap/Untap**, **Flip** (face-up/face-down),
+     or **Delete** it.
 5. **Stacks:**
-   - **Create:** Drag one standalone card onto another card (both must be facing the same way) to stack them.
-   - **Interact:** Dragging a stack moves the entire stack. Right-clicking a stack allows you to draw the top card, delete the stack, or flip the top card.
+   - **Create:** Drag one standalone card onto another card (both must be facing the
+     same way) to stack them.
+   - **Interact:** Dragging a stack moves the entire stack. Right-clicking a stack lets
+     you draw the top card, shuffle, or delete the stack.
+6. **Board image:** **Download board image** in the room panel saves a PNG of the
+   whole table.
 
-## test cards
+## Test cards
 
-test card art is from Dungeon Crawl Stone Soup, used under the CC0 Public Domain License.
+Test card art is from Dungeon Crawl Stone Soup, used under the CC0 Public Domain License.
 
 [OpenGameArt: Dungeon Crawl 32x32 tiles supplemental](https://opengameart.org/content/dungeon-crawl-32x32-tiles-supplemental)
 

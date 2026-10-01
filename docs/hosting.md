@@ -1,9 +1,9 @@
 # Hosting over HTTPS
 
 This guide puts the Docker deployment on a public hostname with HTTPS using a
-**Cloudflare Tunnel**. Once accounts exist (see
-[planning/persistent-workspace.md](../planning/persistent-workspace.md)), HTTPS is
-required. Without it, passwords and session cookies cross the internet in plain text.
+**Cloudflare Tunnel**. The workspace has accounts, so HTTPS is required on any
+public deployment. Without it, passwords and session cookies cross the internet in
+plain text.
 
 A tunnel needs no router port forwarding, gives you a certificate automatically,
 and keeps your home IP out of DNS. It also proxies WebSockets, which the table
@@ -13,11 +13,12 @@ needs, without extra configuration.
 browser ──HTTPS──▶ Cloudflare ──tunnel──▶ cloudflared ──HTTP──▶ nginx (CLIENT_PORT)
                                                                   ├─ /          client
                                                                   ├─ /api       server
+                                                                  ├─ /images    server (card artwork)
                                                                   └─ /colyseus  server (WebSocket)
 ```
 
 The browser only ever talks to one origin. nginx in the `client` container forwards
-`/api`, `/cards`, and `/colyseus` to the server, so `CLIENT_PORT` is the only port the
+`/api`, `/images`, and `/colyseus` to the server, so `CLIENT_PORT` is the only port the
 tunnel has to reach.
 
 ## Before you start
@@ -80,11 +81,25 @@ In `.env`:
 ```ini
 # "Copy link" should hand out the public address, not localhost.
 PUBLIC_CLIENT_URL=https://cards.example.com
+# Session cookies only travel over HTTPS.
+COOKIE_SECURE=true
+# cloudflared and nginx are both proxies in front of the server.
+TRUST_PROXY=2
+# Optional: every request arrives through Cloudflare, so its client-IP header is safe.
+TRUST_CLOUDFLARE_IP=true
 ```
 
-Leave `PUBLIC_SERVER_URL` empty. The client reaches the server through the same
+There is no server URL to configure. The client reaches the server through its own
 origin, which is what the tunnel serves. Run `docker compose up -d` after changing
 `.env`; no rebuild is needed.
+
+| Variable | Value behind a tunnel | Why |
+|---|---|---|
+| `COOKIE_SECURE` | `true` | The browser only sends the session cookie over HTTPS. |
+| `TRUST_PROXY` | `2` (cloudflared, then nginx) | Login rate limits see the real client IP, not the proxy's. |
+| `TRUST_CLOUDFLARE_IP` | `true`, only if every request comes through Cloudflare | Reads `CF-Connecting-IP` directly. Leave it `false` if the app is also reachable another way, because clients could spoof the header. |
+
+Local development stays plain `http://localhost` with `COOKIE_SECURE=false`.
 
 ## 4. Close the old way in
 
@@ -92,18 +107,6 @@ Everything now arrives through the tunnel, so:
 
 - remove any router port forward for `CLIENT_PORT` or `SERVER_PORT`;
 - if the host has a firewall, it does not need to accept either port from outside.
-
-## Settings that arrive with accounts
-
-These do not exist yet. They arrive with the persistent-workspace work. When they
-do, a tunnel deployment sets:
-
-| Variable | Value behind a tunnel | Why |
-|---|---|---|
-| `COOKIE_SECURE` | `true` | Session cookies only travel over HTTPS. |
-| `TRUST_PROXY` | the tunnel hop plus nginx | Login rate limits see the real client IP (taken from `CF-Connecting-IP`), not the proxy's. |
-
-Local development stays plain `http://localhost` with `COOKIE_SECURE=false`.
 
 ## Alternatives
 
@@ -115,10 +118,8 @@ Local development stays plain `http://localhost` with `COOKIE_SECURE=false`.
 
 ## Backing up the workspace
 
-This applies once the workspace database exists. Today all state is in memory,
-and cards live in `cards/`, which you already have.
-
-All persistent data lives in one Docker volume (`DATA_DIR`, mounted as `data/`):
+All persistent data lives in the `workspace-data` Docker volume, mounted at
+`/app/data` (`DATA_DIR`) in the server container:
 
 ```text
 data/
@@ -130,30 +131,35 @@ Rooms are never backed up. They are temporary by design.
 
 **Back up** with a consistent copy of the database plus the image files. Don't copy
 `workspace.db` while the server is writing to it. Use SQLite's `VACUUM INTO`, which
-produces a clean, consistent copy even while the server runs:
+produces a clean, consistent copy even while the server runs. The server image has no
+`sqlite3` binary, so run it through Node and the server's own SQLite driver:
 
 ```bash
-docker compose exec server sqlite3 /app/data/workspace.db \
-  "VACUUM INTO '/app/data/backup-$(date +%F).db'"
-docker compose cp server:/app/data/backup-$(date +%F).db ./backups/
+BACKUP=backup-$(date +%F).db
+docker compose exec server node -e \
+  "require('better-sqlite3')('/app/data/workspace.db').exec(\"VACUUM INTO '/app/data/$BACKUP'\")"
+mkdir -p backups
+docker compose cp server:/app/data/$BACKUP ./backups/
 docker compose cp server:/app/data/images ./backups/images
+docker compose exec server rm /app/data/$BACKUP
 ```
+
+Keep `AUTH_PEPPER` with your backups. Password hashes cannot be checked without it,
+so a restored database with a different pepper locks everyone out.
 
 Image files are never modified once written, so copying them while the server runs
 is safe. Copy them after the database, so every image the backup references is
 present.
 
-**Restore** with the server stopped:
+**Restore** with the server stopped. Remove any `workspace.db-wal` and
+`workspace.db-shm` files left beside the old database first, so SQLite doesn't replay a
+stale write-ahead log onto the restored copy:
 
 ```bash
 docker compose stop server
-# Copy the backup over workspace.db and merge the images directory into data/images.
+docker compose run --rm --no-deps server \
+  rm -f /app/data/workspace.db-wal /app/data/workspace.db-shm
+docker compose cp ./backups/backup-YYYY-MM-DD.db server:/app/data/workspace.db
+docker compose cp ./backups/images/. server:/app/data/images/
 docker compose start server
 ```
-
-When restoring, remove any `workspace.db-wal` and `workspace.db-shm` files left beside
-the old database, so SQLite doesn't replay a stale write-ahead log onto the restored
-copy.
-
-The exact container paths and the `sqlite3` binary depend on how the database work
-lands. Update this section when it does.

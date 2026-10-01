@@ -7,5 +7,11 @@ export default defineConfig({
     // Every Colyseus test server binds the same port, so suites that boot one
     // cannot run side by side.
     fileParallelism: false,
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.{ts,tsx}", "src/test/**"],
+      reporter: ["text-summary", "html"],
+    },
   },
 });
