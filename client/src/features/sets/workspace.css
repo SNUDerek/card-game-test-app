@@ -251,6 +251,44 @@
   font-weight: 600;
 }
 
+.deck-card-list {
+  display: grid;
+  gap: 0.4rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.workspace-page .deck-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-weight: 400;
+}
+
+.workspace-page .deck-card input {
+  width: 5rem;
+  margin-top: 0;
+}
+
+.deck-card small {
+  color: #64748b;
+}
+
+.deck-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.35rem;
+}
+
+.workspace-page .deck-types input {
+  display: inline;
+  width: auto;
+  margin-right: 0.35rem;
+}
+
 @media (max-width: 600px) {
   .workspace-page {
     padding: 1rem;
