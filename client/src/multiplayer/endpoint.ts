@@ -10,8 +10,6 @@ export const COLYSEUS_PROXY_PATH = "/colyseus";
 
 /** Runtime configuration, written by the container at start-up. */
 export interface RuntimeConfig {
-  /** Absolute URL of the Colyseus server. Empty means "same origin". */
-  serverUrl?: string;
   /**
    * Base URL to build shareable room links from, including the port. Empty
    * means "wherever this page was loaded from".
@@ -26,28 +24,16 @@ declare global {
 }
 
 /**
- * Decides where the tabletop server lives, most specific source first:
- *
- * 1. `runtime.serverUrl` — written into config.js when the container starts, so
- *    a deployment can be pointed at a separately exposed server without
- *    rebuilding the image.
- * 2. `buildTimeUrl` — `VITE_COLYSEUS_URL`, baked in at build. Convenient when
- *    running the dev server against a remote backend.
- * 3. The page's own origin plus {@link COLYSEUS_PROXY_PATH}. This is the
- *    default because it needs no configuration at all and follows the page
- *    wherever it is served from: any host, any port, http or https.
+ * Resolves the tabletop server on the page's own origin. Authentication uses
+ * a SameSite cookie, so direct cross-origin server overrides are deliberately
+ * unsupported.
  *
  * Using the full `host` rather than the hostname is what keeps a non-default
  * port working; an earlier version hard-coded the server's port here.
  */
 export function resolveServerEndpoint(
   location: { protocol: string; host: string },
-  runtime?: RuntimeConfig,
-  buildTimeUrl?: string,
 ): string {
-  const configured = runtime?.serverUrl?.trim() || buildTimeUrl?.trim();
-  if (configured) return configured;
-
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${location.host}${COLYSEUS_PROXY_PATH}`;
 }

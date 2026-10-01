@@ -4,3 +4,4 @@ export * from "./ids.js";
 export * from "./cards.js";
 export * from "./room.js";
 export * from "./commands.js";
+export * from "./auth.js";

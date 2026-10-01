@@ -13,6 +13,10 @@ describe("TableRoom connection lifecycle", () => {
         table: defineRoom(TableRoom, {
           cardDefinitionIds: ["spell-1"],
           lockTimeoutMs: 75,
+          authenticate: (_cookie, options) => {
+            const displayName = String((options as { displayName?: string })?.displayName ?? "").trim();
+            return displayName ? { id: `user-${displayName}`, username: displayName, displayName } : undefined;
+          },
         }),
       },
     });
@@ -61,13 +65,9 @@ describe("TableRoom connection lifecycle", () => {
     expect(room.state.players.size).toBe(2);
   });
 
-  it.each([
-    ["missing", {}],
-    ["blank", { displayName: "   " }],
-    ["too long", { displayName: "x".repeat(51) }],
-  ])("rejects a %s display name", async (_label, options) => {
-    await expect(colyseus.sdk.joinOrCreate("table", options)).rejects.toThrow(
-      "A display name between 1 and 50 characters is required.",
+  it("rejects an unauthenticated connection", async () => {
+    await expect(colyseus.sdk.joinOrCreate("table", {})).rejects.toThrow(
+      "Authentication required.",
     );
   });
 

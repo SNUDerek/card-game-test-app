@@ -31,7 +31,6 @@ export function roomJoinUrl(roomId: RoomId, origin: string): string {
  */
 export function describeConnectionError(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : String(cause);
-  if (/password/i.test(message)) return "Incorrect room password.";
   if (/not found|expired/i.test(message)) return "That room no longer exists.";
   if (/display name/i.test(message)) return message;
   return "Could not reach the tabletop server.";

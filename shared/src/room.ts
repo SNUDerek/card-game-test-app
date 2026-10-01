@@ -1,24 +1,9 @@
 import { z } from "zod";
 import type { PlayerId } from "./ids.js";
 
-export const DISPLAY_NAME_MAX_LENGTH = 50;
-export const ROOM_PASSWORD_MAX_LENGTH = 128;
-
-/**
- * Options sent with both room creation and room join. On creation the password
- * *sets* the room password; on join it *proves* knowledge of it. It is only
- * ever sent to the server — neither the password nor its hash is part of
- * synchronized room state.
- */
-export const JoinRoomOptionsSchema = z.object({
-  displayName: z.string().trim().min(1).max(DISPLAY_NAME_MAX_LENGTH),
-  password: z.string().min(1).max(ROOM_PASSWORD_MAX_LENGTH).optional(),
-});
-
-export type JoinRoomOptions = z.infer<typeof JoinRoomOptionsSchema>;
-
 export interface Player {
   id: PlayerId;
+  userId: string;
   displayName: string;
   connected: boolean;
   joinOrder: number;

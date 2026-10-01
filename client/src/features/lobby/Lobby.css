@@ -26,6 +26,9 @@
   font-size: 24px;
 }
 
+.lobby-account { margin: 0 0 8px; color: #94a3b8; }
+.lobby-sign-out { border: 0; background: transparent; color: #93c5fd; cursor: pointer; }
+
 .lobby-card label {
   margin-top: 8px;
   font-size: 12px;
