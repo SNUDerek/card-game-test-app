@@ -11,10 +11,11 @@ import { highestTableZIndex } from "../stack/stack-helpers.js";
  * limiting only slows that down, it does not stop it.
  */
 export const MAX_CARDS_PER_ROOM = 500;
+export interface CardDefinitionLookup { has(id: CardDefinitionId): boolean }
 
 export function spawnCard(
   state: RoomState,
-  definitionIds: ReadonlySet<CardDefinitionId>,
+  definitionIds: CardDefinitionLookup,
   payload: SpawnCardPayload,
   createId: () => string = randomUUID,
 ): CardInstanceState {

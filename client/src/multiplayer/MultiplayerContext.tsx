@@ -33,9 +33,12 @@ import {
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 
 export interface CreateRoomRequest {
+  setId: string;
+  name: string;
+  description?: string;
 }
 
-export interface JoinRoomRequest extends CreateRoomRequest {
+export interface JoinRoomRequest {
   roomId: RoomId;
 }
 
@@ -50,7 +53,7 @@ interface MultiplayerValue extends TableCommands {
   cards: CardInstance[];
   stacks: CardStack[];
   connectionError: string | null;
-  createRoom(): Promise<void>;
+  createRoom(request: CreateRoomRequest): Promise<void>;
   joinRoom(request: JoinRoomRequest): Promise<void>;
   leaveRoom(): Promise<void>;
 }
@@ -132,7 +135,16 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
   );
 
   const createRoom = useCallback(
-    () => connect(() => client.create<ClientRoomState>("table")),
+    (request: CreateRoomRequest) => connect(async () => {
+      const response = await fetch("/api/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      const reservation = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error((reservation as { error?: string }).error ?? "Could not create room.");
+      return client.consumeSeatReservation<ClientRoomState>(reservation);
+    }),
     [client, connect],
   );
 

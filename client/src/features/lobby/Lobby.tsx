@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import type { CardSetSummary } from "@card-table/shared";
 import { useMultiplayer } from "../../multiplayer/MultiplayerContext";
 import { useCurrentUser } from "../auth/AuthContext";
 import "./Lobby.css";
@@ -10,9 +11,27 @@ export function Lobby() {
   const { user, logout } = useCurrentUser();
   const [mode, setMode] = useState<LobbyMode>(invitedRoomId ? "join" : "create");
   const [roomCode, setRoomCode] = useState(invitedRoomId ?? "");
+  const [sets, setSets] = useState<CardSetSummary[]>([]);
+  const [setId, setSetId] = useState("");
+  const [roomName, setRoomName] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/sets").then(async (response) => {
+      if (!response.ok) throw new Error("Could not load sets.");
+      return response.json() as Promise<{ sets: CardSetSummary[] }>;
+    }).then((body) => {
+      if (!active) return;
+      setSets(body.sets);
+      setSetId((current) => current || body.sets[0]?.id || "");
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   const isConnecting = status === "connecting";
-  const canSubmit = mode === "create" || roomCode.trim().length > 0;
+  const canSubmit = mode === "create"
+    ? setId.length > 0 && roomName.trim().length > 0
+    : roomCode.trim().length > 0;
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -20,7 +39,7 @@ export function Lobby() {
 
     // Connection errors are surfaced through `connectionError`.
     try {
-      if (mode === "create") await createRoom();
+      if (mode === "create") await createRoom({ setId, name: roomName.trim() });
       else await joinRoom({ roomId: roomCode.trim() });
     } catch {
       /* already reported */
@@ -52,7 +71,18 @@ export function Lobby() {
           </button>
         </div>
 
-        {mode === "join" && (
+        {mode === "create" ? (
+          <>
+            <label htmlFor="lobby-set">Card set</label>
+            <select id="lobby-set" value={setId} onChange={(event) => setSetId(event.target.value)}>
+              {sets.length === 0 && <option value="">No sets available</option>}
+              {sets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}
+            </select>
+            <label htmlFor="lobby-room-name">Room name</label>
+            <input id="lobby-room-name" value={roomName} maxLength={100}
+              onChange={(event) => setRoomName(event.target.value)} />
+          </>
+        ) : (
           <>
             <label htmlFor="lobby-room-code">Room code</label>
             <input

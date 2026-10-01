@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { CardDefinitionId, DeckEntry, SpawnDeckPayload, SpawnDeckResult } from "@card-table/shared";
 import { CardInstanceState, CardStackState, type RoomState } from "../../rooms/state/RoomState.js";
-import { MAX_CARDS_PER_ROOM } from "../card/spawn-card.js";
+import { MAX_CARDS_PER_ROOM, type CardDefinitionLookup } from "../card/spawn-card.js";
 import { DomainCommandError } from "../errors.js";
 import { defaultRandomInt, shuffled, type RandomInt } from "../random.js";
 import { highestTableZIndex } from "../stack/stack-helpers.js";
@@ -26,7 +26,7 @@ export function expandDeckEntries(entries: readonly DeckEntry[]): CardDefinition
  */
 export function spawnDeck(
   state: RoomState,
-  definitionIds: ReadonlySet<CardDefinitionId>,
+  definitionIds: CardDefinitionLookup,
   payload: SpawnDeckPayload,
   { createId = randomUUID, randomInt = defaultRandomInt }: SpawnDeckOptions = {},
 ): SpawnDeckResult {

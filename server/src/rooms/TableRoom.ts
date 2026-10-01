@@ -48,6 +48,9 @@ import {
   DEFAULT_COMMAND_RATE_LIMIT,
   type RateLimitOptions,
 } from "./rate-limit.js";
+import type { CardLibrary, LibraryChange } from "../library/card-library.js";
+import type { SetUsageRegistry } from "../library/set-usage.js";
+import type { RoomCreationRegistry } from "./room-creation.js";
 
 export interface TableRoomOptions {
   cardDefinitionIds?: string[];
@@ -60,6 +63,15 @@ export interface TableRoomOptions {
   reconnectionGraceSeconds?: number;
   /** Per-connection command budget. Defaults to DEFAULT_COMMAND_RATE_LIMIT. */
   commandRateLimit?: RateLimitOptions;
+  setId?: string;
+  setName?: string;
+  name?: string;
+  description?: string;
+  cardLibrary?: CardLibrary;
+  usageRegistry?: SetUsageRegistry;
+  creationRegistry?: RoomCreationRegistry;
+  requireHttpCreation?: boolean;
+  creationToken?: string;
 }
 
 /**
@@ -77,12 +89,18 @@ export const DEFAULT_MAX_CLIENTS_PER_ROOM = 16;
 
 export class TableRoom extends Room<{ state: RoomState }> {
   private readonly playerIdBySessionId = new Map<string, PlayerId>();
-  private cardDefinitionIds: ReadonlySet<string> = new Set();
+  private cardDefinitionIds: { has(id: string): boolean } = new Set();
   private lockTimeoutMs = DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
   private authenticate: (cookieHeader: string | null, joinOptions: unknown) => CurrentUser | undefined = () => undefined;
   private reconnectionGraceSeconds = DEFAULT_RECONNECTION_GRACE_SECONDS;
   private joinCount = 0;
   private rateLimiter = new CommandRateLimiter();
+  private setId: string | undefined;
+  private cardLibrary: CardLibrary | undefined;
+  private usageRegistry: SetUsageRegistry | undefined;
+  private readonly onLibraryChanged = (change: LibraryChange) => {
+    if (change.setId === this.setId) this.broadcast("CATALOG_CHANGED", change);
+  };
 
   /**
    * Registers one command with the checks every command needs: a rate budget,
@@ -137,16 +155,31 @@ export class TableRoom extends Room<{ state: RoomState }> {
     });
   }
 
-  onCreate(options: TableRoomOptions = {}) {
+  async onCreate(options: TableRoomOptions = {}) {
+    if (options.requireHttpCreation && !options.creationRegistry?.consume(options.creationToken, options.setId)) {
+      throw new ServerError(403, "Rooms must be created through the authenticated HTTP API.");
+    }
     this.setState(new RoomState());
-    this.cardDefinitionIds = new Set(options.cardDefinitionIds ?? []);
+    this.setId = options.setId;
+    this.cardLibrary = options.cardLibrary;
+    this.usageRegistry = options.usageRegistry;
+    this.cardDefinitionIds = options.setId && options.cardLibrary
+      ? options.cardLibrary.activeCardIds(options.setId)
+      : new Set(options.cardDefinitionIds ?? []);
     this.lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_OBJECT_LOCK_TIMEOUT_MS;
     this.maxClients = options.maxClients ?? DEFAULT_MAX_CLIENTS_PER_ROOM;
     this.authenticate = options.authenticate ?? (() => undefined);
     this.reconnectionGraceSeconds =
       options.reconnectionGraceSeconds ?? DEFAULT_RECONNECTION_GRACE_SECONDS;
-    // Rooms are shared by URL, never matchmade: keep them out of any listing.
-    void this.setPrivate(true);
+    await this.setMetadata({
+      name: options.name ?? "Table",
+      description: options.description ?? "",
+      setId: options.setId ?? "",
+      setName: options.setName ?? "",
+    });
+    await this.setPrivate(false);
+    if (this.setId) this.usageRegistry?.acquire(this.setId, this.roomId);
+    this.cardLibrary?.on("changed", this.onLibraryChanged);
     this.rateLimiter = new CommandRateLimiter(
       options.commandRateLimit ?? DEFAULT_COMMAND_RATE_LIMIT,
     );
@@ -233,6 +266,16 @@ export class TableRoom extends Room<{ state: RoomState }> {
       Math.min(this.lockTimeoutMs, 250),
     );
     console.log(`TableRoom created: ${this.roomId}`);
+  }
+
+  async endRoom(editorName: string): Promise<void> {
+    this.broadcast("ROOM_ENDED", { message: `Room ended by ${editorName}.` });
+    await this.disconnect(4000);
+  }
+
+  onDispose(): void {
+    this.cardLibrary?.off("changed", this.onLibraryChanged);
+    this.usageRegistry?.release(this.roomId);
   }
 
   onAuth(_client: Client, options: unknown, context: AuthContext): CurrentUser {
